@@ -1,0 +1,2 @@
+# OFERTA-ACADEMICA-CEDEPRO
+Repositorio oficial de CEDEPRO: plataforma web para explorar la oferta académica vigente (CES) y compararla con matriculados y titulados por provincia, tipo de programa y campo detallado. Incluye mapa interactivo, filtros, gráficos comparativos, tablas y exportación CSV mediante API.
