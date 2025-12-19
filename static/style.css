@@ -1,0 +1,991 @@
+/* static/style.css — CEDEPRO · Paleta Springera 2025 (mate, sin brillos) */
+
+/* ─────────────────────────── PALETA ─────────────────────────── */
+:root {
+  /* Colores base de la paleta */
+  --white: #fffffd;          /* fondo principal */
+  --card: #ffffff;           /* tarjetas */
+  --ink: #1f2430;            /* texto principal */
+  --slate: #262b36;          /* texto oscuro neutro */
+  --muted: #70737f;          /* texto secundario */
+  --gray-line: #e2e3ea;
+
+  /* Paleta Springera (versión desaturada/mate) */
+  --liberty: #5966b1;        /* azul "liberty" */
+  --liberty-dark: #414d91;   /* azul más profundo para énfasis */
+  --saffron: #f6a230;        /* deep saffron */
+  --saffron-dark: #d9851a;   /* saffron más oscuro para hover */
+  --sunglow: #fbcf41;        /* amarillo suave para detalles */
+
+  /* Sombras suaves */
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.04);
+  --shadow: 0 3px 10px rgba(0,0,0,0.06);
+  --shadow-lg: 0 6px 20px rgba(0,0,0,0.10);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--white);
+  color: var(--ink);
+  font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+}
+
+/* ─────────────────────────── TOPBAR ─────────────────────────── */
+/* Color plano liberty, sin degradado */
+.topbar {
+  background: var(--liberty);
+  color: #fff;
+  padding: 18px 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  position: relative;
+  box-shadow: var(--shadow);
+}
+
+/* Mosaic muy suave (puedes comentar todo este bloque si no lo quieres) */
+.topbar.mosaic::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url('/static/mosaic.jpg'); /* opcional */
+  background-size: cover;
+  background-position: center;
+  opacity: 0.05;             /* muy tenue, casi imperceptible */
+  pointer-events: none;
+}
+
+.brand {
+  position: relative;
+  z-index: 1;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+
+.brand p {
+  margin: 4px 0 0;
+  color: #f3f4ff;
+  font-size: .88rem;
+  opacity: .95;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+/* ───────── BOTONES DE NAVEGACIÓN (SIN BRILLO / GLASS) ───────── */
+.nav-link {
+  color: #fff;
+  background: transparent;                          /* plano */
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  text-decoration: none;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s, border 0.2s;
+  box-shadow: none;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.nav-link.active {
+  background: #fff;
+  color: var(--liberty-dark);
+  border-color: #fff;
+  box-shadow: none;
+}
+
+/* Botón en la topbar (Actualizar oferta) */
+.nav-button {
+  background: var(--saffron);
+  color: #3a2600;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  box-shadow: none;
+}
+.nav-button:hover {
+  background: var(--saffron-dark);
+  color: #fff;
+}
+.nav-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ─────────────────────────── CARDS ─────────────────────────── */
+.container {
+  max-width: 1280px;
+  margin: 30px auto;
+  padding: 0 20px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 22px;
+  transition: box-shadow .2s, transform .15s;
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+.panel-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+  color: var(--liberty-dark);
+  border-left: 4px solid var(--saffron);
+  padding-left: 10px;
+}
+
+/* título pequeño (ej. “Oferta vs matrícula”) */
+.small-title {
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+/* ─────────────────────────── TITULOS TABLAS ─────────────────────────── */
+.table-title {
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 12px;
+  color: #fff;
+  font-size: .95rem;
+}
+.table-title.saffron { background: var(--saffron-dark); }
+.table-title.liberty { background: var(--liberty-dark); }
+
+/* ─────────────────────────── BADGES ─────────────────────────── */
+.badge {
+  background: rgba(0,0,0,0.06);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 2px 8px;
+  border-radius: 8px;
+  margin-left: 8px;
+}
+.table-title.saffron .badge {
+  background: rgba(246,162,48,0.20);
+  color: #6e3d00;
+}
+.table-title.liberty .badge {
+  background: rgba(89,102,177,0.22);
+  color: #252d5e;
+}
+
+/* ─────────────────────────── CONTROLES ─────────────────────────── */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.controls select,
+.controls input {
+  border: 1px solid #d7d7e0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: var(--slate);
+  min-width: 160px;
+  font-weight: 500;
+  transition: border .2s, box-shadow .2s, background .2s;
+}
+
+.controls select:focus,
+.controls input:focus {
+  outline: none;
+  border-color: var(--liberty);
+  box-shadow: 0 0 0 2px rgba(89,102,177,0.25);
+  background: #fbfbff;
+}
+
+/* ─────────────────────────── BOTONES ─────────────────────────── */
+.btn {
+  background: var(--saffron);
+  color: #3a2600;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+  box-shadow: var(--shadow-sm);
+}
+.btn:hover {
+  background: var(--saffron-dark);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.btn.alt {
+  background: var(--liberty-dark);
+  color: #fff;
+}
+.btn.alt:hover {
+  background: var(--liberty);
+}
+
+.btn.small {
+  padding: 6px 10px;
+  font-size: .88rem;
+}
+
+/* ─────────────────────────── GRÁFICOS ─────────────────────────── */
+.compare-grid {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.compare-grid .panel {
+  flex: 1;
+  min-width: 360px;
+}
+
+/* contenedor visual de los charts (ej. Oferta vs matrícula) */
+.grafico-container {
+  position: relative;
+  height: 360px;
+}
+
+/* si usas un contenedor único para el gráfico combinado */
+.charts-single {
+  display: flex;
+  justify-content: flex-start; /* un poco hacia la izquierda */
+}
+
+/* Altura fija de los canvas de Chart.js */
+#ofertaChart,
+#matChart,
+#comparisonChart {
+  width: 100% !important;
+  height: 360px !important;
+  max-height: 360px !important;
+  display: block;
+  background-color: #f3f4f9;
+  border-radius: 12px;
+  padding: 6px;
+}
+
+/* ─────────────────────────── TABLAS ─────────────────────────── */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 10px;
+  font-size: .95rem;
+}
+
+table th,
+table td {
+  border-bottom: 1px solid var(--gray-line);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+table th {
+  background: #f4f5fb;
+  font-weight: 700;
+  color: var(--liberty-dark);
+}
+
+table tr:hover td {
+  background: #f7f8fc;
+}
+
+/* ─────────────────────────── TABLA SCROLLABLE MATRICULADOS ─────────────────────────── */
+.table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+/* Cabecera fija dentro del scroll */
+.table-scroll .data-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f4f5fb;
+  z-index: 1;
+}
+
+/* Zebra suave específica para data-table */
+.data-table tbody tr:nth-child(odd) td {
+  background-color: #fafbff;
+}
+
+.data-table tbody tr:hover td {
+  background-color: #eef3ff;
+}
+
+/* ─────────────────────────── LISTA DE PROVINCIAS (SIN DEGRADADO) ─────────────────────────── */
+/* Ajusta los selectores a cómo se llamen en tu HTML (ul/li o divs) */
+.lista-provincias,
+#lista-provincias {
+  margin-top: 16px;
+}
+
+/* filas principales de la distribución por provincia e institución */
+.provincia-row,
+.provincia-item,
+.provincia-strip {
+  background: var(--liberty-dark);   /* color plano, sin degradado */
+  background-image: none;
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* efecto zebra suave para mejorar lectura */
+.provincia-row:nth-child(even),
+.provincia-item:nth-child(even),
+.provincia-strip:nth-child(even) {
+  background: #f4f5fb;
+  color: var(--ink);
+}
+
+/* indicamos el borde/énfasis con saffron en vez de degradado */
+.provincia-row::before,
+.provincia-item::before,
+.provincia-strip::before {
+  content: "";
+  width: 4px;
+  height: 70%;
+  border-radius: 6px;
+  background: var(--saffron);
+  margin-right: 12px;
+}
+
+/* por si alguna versión anterior dejaba un linear-gradient inline */
+.lista-provincias [style*="linear-gradient"],
+#lista-provincias [style*="linear-gradient"] {
+  background-image: none !important;
+}
+
+/* ─────────────────────────── MODAL ─────────────────────────── */
+.modal.hidden { display: none; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.38);
+  backdrop-filter: blur(4px);
+}
+
+.modal-panel.fullscreen {
+  position: fixed;
+  inset: 5% 8%;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f8f8fb;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-actions input {
+  border: 1px solid #ddd;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.modal-body {
+  padding: 16px 20px;
+  overflow: auto;
+}
+
+/* ─────────────────────────── LEYENDA ─────────────────────────── */
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px;
+  border-bottom: 1px dashed #dedede;
+}
+
+.legend-row .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.legend-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.legend-meta {
+  color: #555;
+  font-size: .92rem;
+}
+
+/* ─────────────────────────── FOOTER ─────────────────────────── */
+.footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 30px 0 40px;
+  font-size: .88rem;
+}
+
+/* ─────────────────────────── EXTRAS ─────────────────────────── */
+.muted { color: var(--muted); }
+
+.row.gap {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+/* ─────────────────────────── UTILIDAD: HIDDEN ─────────────────────────── */
+.hidden {
+  display: none !important;
+}
+
+/* ─────────────────────────── FILTROS + BADGES (MATRICULADOS) ─────────────────────────── */
+.filtros-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.filtros-col {
+  flex: 1 1 260px;
+}
+
+.resumen-col {
+  flex: 0 0 260px;
+  text-align: right;
+}
+
+.badge-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.badge-group .tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f4f5fb;
+  color: var(--slate);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: .86rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─────────────────────────── MAPA MATRICULADOS ─────────────────────────── */
+.mapa-wrapper {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0 14px;
+  min-height: 320px;
+}
+
+#mapa-ecuador {
+  max-width: 620px;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Provincias por defecto: gris suave */
+#mapa-ecuador path,
+#mapa-ecuador polygon,
+#mapa-ecuador .provincia {
+  fill: #d4d7e0;
+  stroke: #ffffff;
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill .2s ease-out, stroke-width .2s ease-out, transform .15s ease-out;
+}
+
+/* Hover: amarillo sunglow */
+#mapa-ecuador path:hover,
+#mapa-ecuador polygon:hover,
+#mapa-ecuador .provincia:hover {
+  fill: var(--sunglow);
+}
+
+/* Seleccionada: saffron CEDEPRO */
+#mapa-ecuador path.selected,
+#mapa-ecuador polygon.selected,
+#mapa-ecuador .provincia.selected {
+  fill: var(--saffron);
+  stroke-width: 2;
+}
+
+/* Puntos de label_points (círculos) como provincias interactivas */
+#mapa-ecuador #label_points circle {
+  fill: #d4d7e0;
+  stroke: #ffffff;
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill .2s ease-out, stroke-width .2s ease-out, transform .15s ease-out;
+}
+
+#mapa-ecuador #label_points circle:hover {
+  fill: var(--sunglow);
+}
+
+#mapa-ecuador #label_points circle.selected {
+  fill: var(--saffron);
+  stroke-width: 2;
+}
+
+/* Detalle de provincia seleccionada */
+.detalle-provincia {
+  text-align: center;
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.detalle-provincia h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  color: var(--liberty-dark);
+}
+
+.img-provincia {
+  max-width: 280px;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  object-fit: cover;
+}
+
+/* Panel donde viven filtros, gráficos y tablas ligados al mapa */
+#panel-tablas {
+  margin-top: 18px;
+}
+
+/* ─────────────────────────── ACORDEÓN OFERTA (PROVINCIA × IES) ─────────────────────────── */
+
+.accordion {
+  margin-top: 1rem;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--card);
+}
+
+.accordion-item {
+  border-bottom: 1px solid #ececf3;
+  background: var(--card);
+}
+
+.accordion-header {
+  cursor: pointer;
+  padding: 12px 16px;
+  font-weight: 700;
+  background: var(--liberty-dark); /* sin degradado */
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: background 0.25s ease, filter 0.25s ease;
+}
+
+.accordion-header:hover {
+  filter: brightness(1.06);
+}
+
+/* (Opcional) si luego envuelves el texto en spans desde JS */
+.accordion-header span.accordion-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accordion-header .pill {
+  background: rgba(255,255,255,0.14);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Flecha indicadora en provincia */
+.accordion-header::after {
+  content: "▾";
+  font-size: 0.9rem;
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+  opacity: 0.9;
+}
+.accordion-header.active::after {
+  transform: rotate(180deg);
+}
+
+.accordion-content {
+  display: none;
+  padding: 0;
+  background: #f7f7fb;
+}
+.accordion-content.active {
+  display: block;
+}
+
+.accordion-inner {
+  padding: 10px 16px 6px 16px;
+  border-top: 1px solid #e1e2ec;
+}
+
+/* Cabecera de cada IES */
+.inner-header {
+  cursor: pointer;
+  padding: 8px 10px;
+  background: #f3f4fb;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.inner-header:hover {
+  background: #e7e9f7;
+  transform: translateY(-1px);
+}
+
+/* Flecha en el nivel IES */
+.inner-header::after {
+  content: "▾";
+  font-size: 0.85rem;
+  opacity: 0.8;
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+}
+
+.inner-header.open::after {
+  transform: rotate(180deg);
+}
+
+/* Tabla dentro de cada IES */
+.inner-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 0.9rem;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.inner-table th,
+.inner-table td {
+  border: 1px solid #e2e3ea;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.inner-table th {
+  background: #f4f5fb;
+  font-weight: 700;
+}
+
+.inner-content {
+  display: none;
+  margin-top: 6px;
+}
+
+.inner-content.active {
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* ─────────────────────────── RESPONSIVE ─────────────────────────── */
+@media (max-width: 768px) {
+  #mapa-ecuador {
+    max-width: 100%;
+  }
+
+  .compare-grid .panel {
+    min-width: 100%;
+  }
+
+  .grafico-container {
+    height: 280px;
+  }
+
+  .resumen-col {
+    flex: 1 1 100%;
+    text-align: left;
+  }
+
+  .badge-group .tag-pill {
+    justify-content: flex-start;
+  }
+}
+
+/* =========================================================
+   OFERTA · Acordeón (PRO) — alineación izquierda + estética
+   Pegar al FINAL del style.css (no borra nada)
+========================================================= */
+
+.accordion{
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.accordion-item{
+  border-bottom: 1px solid rgba(255,255,255,0.14);
+}
+
+.accordion-header{
+  background: var(--liberty-dark);
+  color: #fff;
+
+  display: grid !important;
+  grid-template-columns: 1fr auto 28px; /* provincia | chip | flecha */
+  align-items: center;
+  gap: 12px;
+
+  padding: 14px 18px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-align: left;
+}
+
+.accordion-header span.accordion-title{
+  justify-self: start;
+  text-align: left;
+}
+
+.accordion-header .pill{
+  justify-self: center;
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.18);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.10);
+  backdrop-filter: blur(6px);
+}
+
+.accordion-header::after{
+  justify-self: end;
+  opacity: 0.95;
+  font-size: 0.95rem;
+  transform: rotate(0deg);
+  transition: transform .18s ease;
+}
+.accordion-header.active::after{
+  transform: rotate(180deg);
+}
+
+.accordion-header:hover{
+  filter: none;
+  background: #3b4686;
+}
+
+.accordion-content{
+  background: linear-gradient(180deg, #fbfcff 0%, #f6f7fd 100%);
+  border-top: 1px solid rgba(31,36,48,0.08);
+}
+
+.accordion-inner{
+  padding: 12px 18px 14px;
+}
+
+.inner-header{
+  display: grid;
+  grid-template-columns: 1fr auto 22px; /* nombre IES | chip | flecha */
+  align-items: center;
+  gap: 10px;
+
+  background: #ffffff;
+  border: 1px solid rgba(31,36,48,0.10);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(16,24,40,0.06);
+
+  padding: 10px 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.inner-header:hover{
+  background: rgba(89,102,177,0.06);
+  transform: translateY(-1px);
+}
+
+.inner-header::after{
+  justify-self: end;
+  opacity: .75;
+}
+
+.inner-table{
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(31,36,48,0.10);
+  box-shadow: 0 2px 10px rgba(16,24,40,0.06);
+}
+
+.inner-table th{
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: .78rem;
+  color: var(--liberty-dark);
+}
+
+@media (max-width: 720px){
+  .accordion-header{
+    grid-template-columns: 1fr 28px;
+    grid-template-rows: auto auto;
+  }
+  .accordion-header .pill{
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-top: 6px;
+  }
+}
+
+/* =========================================================
+   TOPBAR PRO · estética premium sin brillos
+   Pegar al FINAL del style.css
+========================================================= */
+
+/* Topbar: más aire + mejor alineación */
+.topbar{
+  padding: 20px 28px;
+  gap: 22px;
+  box-shadow: 0 10px 28px rgba(16,24,40,.14);
+  border-bottom: 1px solid rgba(255,255,255,0.14);
+}
+
+/* Contenedor de marca: jerarquía */
+.brand h1{
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: .2px;
+  line-height: 1.15;
+}
+
+.brand p{
+  margin-top: 6px;
+  font-size: 0.92rem;
+  color: rgba(255,255,255,0.88);
+  letter-spacing: .15px;
+  max-width: 720px; /* evita que el subtítulo se haga eterno */
+}
+
+/* Botones nav: se ven como “tabs” pro */
+.nav-actions{
+  gap: 12px;
+}
+
+.nav-link{
+  border-radius: 999px;                 /* pill */
+  padding: 10px 16px;
+  font-weight: 700;
+  letter-spacing: .15px;
+  border: 1px solid rgba(255,255,255,0.26);
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.10);
+  transition: transform .14s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+/* Hover más elegante */
+.nav-link:hover{
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.42);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.14);
+}
+
+/* Active: se nota mucho, pero limpio */
+.nav-link.active{
+  background: #ffffff;
+  color: var(--liberty-dark);
+  border-color: rgba(255,255,255,0.92);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.14);
+}
+
+/* (Opcional) si quieres un pequeño separador visual entre marca y botones */
+@media (min-width: 900px){
+  .topbar{
+    align-items: center;
+  }
+}
+
+/* Responsive: en móvil apila bonito */
+@media (max-width: 760px){
+  .topbar{
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px 18px;
+  }
+  .brand p{
+    max-width: 100%;
+  }
+  .nav-actions{
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .nav-link{
+    padding: 10px 14px;
+  }
+}

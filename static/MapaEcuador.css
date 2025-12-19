@@ -1,0 +1,23 @@
+.mapa-ecuador-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.mapa-ecuador-svg svg {
+  width: 100%;
+  height: auto;
+}
+
+.mapa-ecuador-tooltip {
+  position: fixed;
+  background: #111;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -120%);
+}

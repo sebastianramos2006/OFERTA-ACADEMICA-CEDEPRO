@@ -1,0 +1,68 @@
+# =====================
+# Secrets
+# =====================
+.env
+.env.*
+*.key
+*.pem
+*.p12
+credentials.json
+token.json
+
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# =====================
+# Logs / outputs
+# =====================
+*.log
+logs/
+outputs/
+tmp/
+temp/
+
+# =====================
+# Data (local heavy files)
+# =====================
+data/
+# Si quieres mantener la carpeta data pero sin excel:
+# data/*.xlsx
+# data/*.csv
+# data/*.parquet
+
+# Backups del pipeline (si decides versionar data)
+data/backups/
+
+# Office temp files
+~$*.xlsx
+~$*.docx
+~$*.pptx
+
+# =====================
+# OS / editor
+# =====================
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+
+# =====================
+# Node
+# =====================
+node_modules/
+dist/
+build/

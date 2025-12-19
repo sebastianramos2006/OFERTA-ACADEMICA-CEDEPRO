@@ -1,0 +1,250 @@
+/* static/style.css — CEDEPRO Greenstone Executive */
+:root {
+  /* Paleta principal */
+  --phthalo-green: #19350C;
+  --mustard-green: #687D31;
+  --light-gray: #D5D3CC;
+  --deep-space: #406768;
+  --moonstone: #6FA9BB;
+
+  /* Sistema */
+  --bg: #f7f8f6;
+  --card: #ffffff;
+  --ink: #1b1b1b;
+  --muted: #6e6e6e;
+  --shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* --- ESTRUCTURA GLOBAL --- */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+}
+
+/* --- TOPBAR --- */
+.topbar {
+  background: linear-gradient(135deg, var(--deep-space) 0%, var(--moonstone) 100%);
+  color: #fff;
+  padding: 18px 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  position: relative;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+}
+.topbar.mosaic::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url('/static/mosaic.jpg');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.08;
+  pointer-events: none;
+}
+.brand h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: .3px;
+  font-weight: 700;
+}
+.brand p {
+  margin: 2px 0 0;
+  color: rgba(255,255,255,0.85);
+  font-size: .9rem;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nav-link {
+  color: #fff;
+  background: rgba(255,255,255,0.15);
+  text-decoration: none;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: background .2s, transform .15s;
+}
+.nav-link:hover {
+  background: rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+.nav-link.active {
+  background: #fff;
+  color: var(--deep-space);
+}
+
+/* --- CONTENEDORES Y TARJETAS --- */
+.container {
+  max-width: 1280px;
+  margin: 28px auto;
+  padding: 0 20px;
+}
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+  transition: box-shadow .2s;
+}
+.card:hover {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+.panel-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+  color: var(--deep-space);
+  border-left: 4px solid var(--mustard-green);
+  padding-left: 8px;
+}
+
+/* --- TABLAS --- */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 8px;
+  font-size: .95rem;
+}
+table th, table td {
+  border-bottom: 1px solid var(--light-gray);
+  padding: 8px 10px;
+  text-align: left;
+}
+table th {
+  background: #f4f6f4;
+  font-weight: 700;
+  color: var(--deep-space);
+}
+table tr:hover td {
+  background: #f9faf9;
+}
+
+/* --- CONTROLES Y BOTONES --- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.controls select,
+.controls input {
+  border: 1px solid var(--light-gray);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--ink);
+  min-width: 160px;
+  font-weight: 500;
+}
+.controls select:focus,
+.controls input:focus {
+  outline: none;
+  border-color: var(--deep-space);
+  box-shadow: 0 0 0 2px rgba(64,103,104,0.25);
+}
+
+.btn {
+  background: var(--mustard-green);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+  box-shadow: var(--shadow);
+}
+.btn:hover {
+  background: #546924;
+  transform: translateY(-1px);
+}
+.btn.alt {
+  background: var(--deep-space);
+  color: #fff;
+}
+.btn.alt:hover {
+  background: #325253;
+}
+.btn.small {
+  padding: 6px 10px;
+  font-size: .9rem;
+}
+
+/* --- GRAFICOS Y MODALES --- */
+.grafico-container { height: 500px; }
+.modal.hidden { display: none; }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  backdrop-filter: blur(3px);
+}
+.modal-panel.fullscreen {
+  position: fixed;
+  inset: 6% 8%;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #f8f9f7;
+}
+.modal-actions { display: flex; gap: 8px; }
+.modal-actions input {
+  border: 1px solid #ddd;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.modal-body { padding: 14px 18px; overflow: auto; }
+
+/* --- LEYENDA Y PIE --- */
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-bottom: 1px dashed #eee;
+}
+.legend-row .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.legend-label { flex: 1; font-weight: 600; }
+.legend-meta { color: #555; font-size: .92rem; }
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 28px 0 40px;
+  font-size: .9rem;
+}
+
+/* --- OTROS --- */
+.muted { color: var(--muted); }
+.row.gap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}

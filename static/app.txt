@@ -1,0 +1,260 @@
+// static/js/main.js
+document.addEventListener('DOMContentLoaded', () => {
+  // DOM
+  const tabTipo = document.getElementById('tabTipo');
+  const tabMat = document.getElementById('tabMatriculados');
+  const viewTipo = document.getElementById('view-tipo');
+  const viewMat = document.getElementById('view-matriculados');
+
+  const totalesDiv = document.getElementById('totales');
+
+  const selProvince = document.getElementById('filter-province');
+  const selTipo = document.getElementById('filter-tipo');
+  const selYear = document.getElementById('filter-year');
+  const btnRefresh = document.getElementById('btnRefresh');
+
+  const chartTipoNacionalCtx = document.getElementById('chartTipoNacional').getContext('2d');
+  const chartComparacionCtx = document.getElementById('chartComparacion').getContext('2d');
+
+  const legendTipoNacional = document.getElementById('legendTipoNacional');
+  const legendComparacion = document.getElementById('legendComparacion');
+  const tableMat = document.getElementById('tableMatriculados');
+
+  let chartTipoNacional = null;
+  let chartComparacion = null;
+
+  // estado
+  let metadata = null;
+
+  // UI: pestañas
+  tabTipo.addEventListener('click', () => { activateTab('tipo'); });
+  tabMat.addEventListener('click', () => { activateTab('mat'); });
+  function activateTab(k){
+    if (k==='tipo'){
+      tabTipo.classList.add('active'); tabMat.classList.remove('active');
+      viewTipo.classList.add('active'); viewMat.classList.remove('active');
+    } else {
+      tabMat.classList.add('active'); tabTipo.classList.remove('active');
+      viewMat.classList.add('active'); viewTipo.classList.remove('active');
+    }
+  }
+
+  // Palette (negro/amarillo + complement)
+  function palette(n){
+    const base = ['#ffd400','#ffb84d','#f7d06b','#c9c9c9','#7f7f7f','#5f5f5f','#d4af37','#9b870c','#6c4a00','#f29f05'];
+    return Array.from({length:n}, (_,i)=> base[i%base.length]);
+  }
+
+  // fetch metadata y poblar filtros
+  fetch('/api/metadata').then(r=>r.json()).then(md=>{
+    metadata = md;
+    // poblar years
+    if (md.available_years && md.available_years.length>0){
+      for (const y of md.available_years){
+        const opt = document.createElement('option'); opt.value = y; opt.textContent = y;
+        selYear.appendChild(opt);
+      }
+    }
+  }).catch(e=> console.warn("metadata error",e));
+
+  // poblar provincias
+  fetch('/api/list_provincias').then(r=>r.json()).then(list=>{
+    list.sort();
+    for (const p of list){
+      const opt = document.createElement('option');
+      opt.value = p; opt.textContent = p;
+      selProvince.appendChild(opt);
+    }
+  }).catch(e=>console.warn(e));
+
+  // carga inicial de datos
+  function loadAll(){
+    drawTipoNacional();
+    drawComparacion();
+    loadMatriculadosTable();
+    loadTotales();
+  }
+
+  // Totales badge
+  function loadTotales(){
+    fetch('/api/datos').then(r=>r.json()).then(js=>{
+      const container = document.createElement('div');
+      container.className = 'badges';
+      const badges = [];
+      if (js.total_provincias!=null) badges.push({label:'Provincias', value: js.total_provincias});
+      if (js.resumen_tipo_institucion){
+        // mostrar universidades e institutos (si existen) manteniendo colores
+        js.resumen_tipo_institucion.forEach(it=>{
+          badges.push({label: it._TIPO_INSTITUCION_UNI || it['TIPO DE INSTITUCIÓN'] || it['TIPO_INSTITUCION'], value: it.num_instituciones || it.num_instituciones});
+        });
+      }
+      if (js.total_carreras!=null) badges.push({label:'Carreras', value: js.total_carreras});
+      if (js.total_matriculados_global!=null) badges.push({label:'Matriculados totales', value: js.total_matriculados_global});
+
+      totalesDiv.innerHTML = '';
+      for (const b of badges){
+        const d = document.createElement('div'); d.className='badge';
+        d.innerHTML = `<span class="num">${b.value}</span><small>${b.label}</small>`;
+        totalesDiv.appendChild(d);
+      }
+    }).catch(e=>console.error(e));
+  }
+
+  // Dibuja chart Tipo Nacional (oferta) - usa grafico_nacional?matriculados=0
+  async function drawTipoNacional(){
+    const useMat = false;
+    const params = new URLSearchParams();
+    params.set('matriculados', useMat ? '1' : '0');
+    // filtros
+    if (selTipo.value) params.set('tipo', selTipo.value);
+    if (selProvince.value) params.set('provincia', selProvince.value);
+
+    const resp = await fetch('/api/grafico_nacional?' + params.toString());
+    const data = await resp.json();
+
+    // limitar (pero dejar scroll en legend)
+    const labels = data.map(d=>d.campo);
+    const values = data.map(d=>d.valor);
+    const colors = palette(labels.length);
+
+    // destruir si existe
+    if (chartTipoNacional) try{ chartTipoNacional.destroy(); }catch(e){}
+    chartTipoNacional = new Chart(chartTipoNacionalCtx, {
+      type:'bar',
+      data:{ labels: labels, datasets:[{ data: values, backgroundColor: colors }] },
+      options:{
+        indexAxis:'y',
+        responsive:true,
+        maintainAspectRatio:false,
+        plugins:{ legend:{ display:false } },
+        scales:{ x:{ beginAtZero:true } }
+      }
+    });
+
+    // legend
+    legendTipoNacional.innerHTML = '';
+    data.slice(0,200).forEach((it, i)=>{
+      const row = document.createElement('div'); row.className='legend-row';
+      row.innerHTML = `<div class="legend-swatch" style="background:${colors[i]}"></div>
+                       <div class="legend-label">${it.campo}</div>
+                       <div class="legend-meta">${Number(it.valor).toLocaleString()}</div>`;
+      legendTipoNacional.appendChild(row);
+    });
+  }
+
+  // Dibuja comparacion oferta vs matriculados (para la seleccion: provincia o nacional)
+  async function drawComparacion(){
+    // queremos comparar: oferta (cantidad programas) vs matriculados (suma)
+    // usaremos grafico_nacional con matriculados=0 y matriculados=1 y luego hacemos join por campo base
+
+    const paramsBase = new URLSearchParams();
+    if (selTipo.value) paramsBase.set('tipo', selTipo.value);
+    if (selProvince.value) paramsBase.set('provincia', selProvince.value);
+
+    // oferta (por campo base)
+    paramsBase.set('matriculados','0');
+    const ofertaResp = await fetch('/api/grafico_nacional?' + paramsBase.toString());
+    const oferta = await ofertaResp.json();
+
+    // matriculados
+    const paramsMat = new URLSearchParams(paramsBase);
+    paramsMat.set('matriculados','1');
+    if (selYear.value) paramsMat.set('year', selYear.value);
+    const matResp = await fetch('/api/grafico_nacional?' + paramsMat.toString());
+    const mat = await matResp.json();
+
+    // unir por campo (campo es nombre base)
+    const mapOferta = {}; oferta.forEach(r => mapOferta[r.campo] = (r.valor||0));
+    const mapMat = {}; mat.forEach(r => mapMat[r.campo] = (r.valor||0));
+
+    // union de keys ordenadas por matriculados desc
+    const keys = Array.from(new Set([...Object.keys(mapOferta), ...Object.keys(mapMat)]));
+    keys.sort((a,b) => ( (mapMat[b]||0) - (mapMat[a]||0) ));
+
+    const labels = keys;
+    const datosOferta = keys.map(k => mapOferta[k] || 0);
+    const datosMat = keys.map(k => mapMat[k] || 0);
+
+    const colors = palette(labels.length);
+
+    // destruir
+    if (chartComparacion) try{ chartComparacion.destroy(); }catch(e){}
+
+    chartComparacion = new Chart(chartComparacionCtx, {
+      type:'bar',
+      data:{
+        labels: labels,
+        datasets:[
+          { label: 'Oferta (num programas)', data: datosOferta, backgroundColor: colors.map(c=>shadeColor(c, -30)) },
+          { label: 'Matriculados (total)', data: datosMat, backgroundColor: colors }
+        ]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        plugins:{ legend:{ position:'top', labels:{boxWidth:12} } },
+        scales:{
+          x:{ ticks: { autoSkip:false }, stacked:false },
+          y:{ beginAtZero:true }
+        }
+      }
+    });
+
+    // legend comparacion (top 200)
+    legendComparacion.innerHTML = '';
+    keys.slice(0,200).forEach((k, i)=>{
+      const row = document.createElement('div'); row.className='legend-row';
+      row.innerHTML = `<div class="legend-swatch" style="background:${colors[i]}"></div>
+                       <div class="legend-label">${k}</div>
+                       <div class="legend-meta">M: ${Number(mapMat[k]||0).toLocaleString()} • O: ${Number(mapOferta[k]||0).toLocaleString()}</div>`;
+      legendComparacion.appendChild(row);
+    });
+  }
+
+  // tabla de matriculados (muestra parcial)
+  async function loadMatriculadosTable(){
+    const year = selYear.value;
+    const url = '/api/matriculados_resumen' + (year ? '?year=' + year : '');
+    const resp = await fetch(url);
+    const data = await resp.json();
+    // construir tabla (solo primeras 200 filas)
+    const max = 500;
+    const rows = data.slice(0, max);
+    let html = '<table><thead><tr><th>Institución</th><th>Carrera</th><th>Total matriculados</th></tr></thead><tbody>';
+    for (const r of rows){
+      html += `<tr><td>${escapeHtml(r["INSTITUCIÓN DE EDUCACIÓN SUPERIOR"])}</td><td>${escapeHtml(r["PROGRAMA / CARRERA"])}</td><td>${Number(r.total_matriculados||0).toLocaleString()}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    tableMat.innerHTML = html;
+  }
+
+  // helper: shade color (simple)
+  function shadeColor(hex, percent) {
+    // hex without #
+    let h = hex.replace('#','');
+    let r = parseInt(h.substring(0,2),16);
+    let g = parseInt(h.substring(2,4),16);
+    let b = parseInt(h.substring(4,6),16);
+    r = parseInt(r * (100 + percent) / 100);
+    g = parseInt(g * (100 + percent) / 100);
+    b = parseInt(b * (100 + percent) / 100);
+    r = (r<255)?r:255; g=(g<255)?g:255; b=(b<255)?b:255;
+    const rr = ("0"+r.toString(16)).slice(-2);
+    const gg = ("0"+g.toString(16)).slice(-2);
+    const bb = ("0"+b.toString(16)).slice(-2);
+    return "#" + rr + gg + bb;
+  }
+
+  function escapeHtml(s){ if(!s && s!==0) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // eventos
+  btnRefresh.addEventListener('click', () => {
+    loadAll();
+  }); 
+  selProvince.addEventListener('change', () => { drawTipoNacional(); drawComparacion(); loadMatriculadosTable(); });
+  selTipo.addEventListener('change', () => { drawTipoNacional(); drawComparacion(); });
+  selYear.addEventListener('change', () => { drawComparacion(); loadMatriculadosTable(); });
+
+  // inicial
+  loadAll();
+});

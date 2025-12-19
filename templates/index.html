@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>CEDEPRO · Oferta Académica</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* Acordeón principal provincia → IES */
+    .accordion {
+      margin-top: 1rem;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      background: var(--card);
+    }
+    .accordion-item {
+      border-bottom: 1px solid #ececf3;
+      background: var(--card);
+    }
+
+    .accordion-header {
+      cursor: pointer;
+      padding: 12px 16px;
+      font-weight: 700;
+      background: var(--liberty-dark); /* sin degradado */
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: background 0.25s ease, filter 0.25s ease;
+    }
+    .accordion-header:hover {
+      filter: brightness(1.06);
+    }
+    .accordion-header span.accordion-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .accordion-header .pill {
+      background: rgba(255,255,255,0.14);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    /* Flecha indicadora */
+    .accordion-header::after {
+      content: "▾";
+      font-size: 0.9rem;
+      transform: rotate(0deg);
+      transition: transform 0.2s ease;
+      opacity: 0.9;
+    }
+    .accordion-header.active::after {
+      transform: rotate(180deg);
+    }
+
+    .accordion-content {
+      display: none;
+      padding: 0;
+      background: #f7f7fb;
+    }
+    .accordion-content.active {
+      display: block;
+    }
+
+    .accordion-inner {
+      padding: 10px 16px 6px 16px;
+      border-top: 1px solid #e1e2ec;
+    }
+
+    .inner-header {
+      cursor: pointer;
+      padding: 8px 10px;
+      background: #f3f4fb;
+      border-radius: 8px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      transition: background 0.2s ease, transform 0.1s ease;
+    }
+    .inner-header:hover {
+      background: #e7e9f7;
+      transform: translateY(-1px);
+    }
+
+    /* Flecha en el nivel IES */
+    .inner-header::after {
+      content: "▾";
+      font-size: 0.85rem;
+      opacity: 0.8;
+      transform: rotate(0deg);
+      transition: transform 0.2s ease;
+    }
+    .inner-header.open::after {
+      transform: rotate(180deg);
+    }
+
+    .inner-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 0.9rem;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .inner-table th,
+    .inner-table td {
+      border: 1px solid #e2e3ea;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    .inner-table th {
+      background: #f4f5fb;
+      font-weight: 700;
+    }
+
+    .inner-content {
+      display: none;
+      margin-top: 6px;
+    }
+    .inner-content.active {
+      display: block;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+<header class="topbar mosaic">
+  <div class="brand">
+    <h1>CEDEPRO · Oferta Académica en Educación Superior</h1>
+    <p>Programas por provincia e institución de educación superior</p>
+  </div>
+  <nav class="nav-actions">
+    <a href="/" class="nav-link active">Oferta</a>
+    <a href="/matriculas" class="nav-link">Matriculados / Comparación</a>
+    <!-- Botón de actualización de oferta removido (ahora se actualiza solo vía pipeline_update.py) -->
+  </nav>
+</header>
+
+<main class="container">
+  <section class="card">
+    <div class="panel-title">Distribución por provincia e institución</div>
+    <p class="muted">
+      Despliega cada provincia para ver cuántos programas oferta cada institución
+      y cómo se distribuyen según el tipo de programa.
+    </p>
+    <div id="accordion-container" class="accordion">Cargando datos...</div>
+  </section>
+</main>
+
+<footer class="footer">
+  <small>© CEDEPRO · Interfaz Profesional</small>
+</footer>
+
+<script>
+  // Helper para formatear números al estilo Ecuador
+  function formatNumber(value) {
+    const num = Number(value || 0);
+    if (Number.isNaN(num)) return "0";
+    return num.toLocaleString("es-EC");
+  }
+
+  // Cargar tabla de oferta por provincia × IES × tipo de programa
+  fetch("/api/oferta_tipo_programa")
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById("accordion-container");
+      if (!data || data.length === 0) {
+        container.textContent = "No hay datos disponibles.";
+        return;
+      }
+
+      // provincias[prov] = { ies: { iesName: {tipos: [...], totalProgramas: n} }, totalProgramas: nProv }
+      const provincias = {};
+
+      data.forEach(row => {
+        const prov = row["PROVINCIA"] || "SIN PROVINCIA";
+        const ies = row["INSTITUCIÓN DE EDUCACIÓN SUPERIOR"] || "SIN IES";
+        const tipo = row["TIPO DE PROGRAMA"] || "SIN TIPO";
+        const num = Number(row["NUM_PROGRAMAS"] || 0);
+
+        if (!provincias[prov]) {
+          provincias[prov] = {
+            ies: {},
+            totalProgramas: 0
+          };
+        }
+        if (!provincias[prov].ies[ies]) {
+          provincias[prov].ies[ies] = {
+            tipos: [],
+            totalProgramas: 0
+          };
+        }
+
+        provincias[prov].ies[ies].tipos.push({ tipo, num });
+        provincias[prov].ies[ies].totalProgramas += num;
+        provincias[prov].totalProgramas += num;
+      });
+
+      // Ordenar provincias alfabéticamente
+      const provEntries = Object.entries(provincias).sort(
+        (a, b) => a[0].localeCompare(b[0], "es")
+      );
+
+      container.innerHTML = "";
+
+      provEntries.forEach(([prov, infoProv]) => {
+        const item = document.createElement("div");
+        item.className = "accordion-item";
+
+        const iesData = infoProv.ies;
+        const numIes = Object.keys(iesData).length;
+        const totalProgProv = infoProv.totalProgramas;
+
+        const header = document.createElement("div");
+        header.className = "accordion-header";
+
+        // Usamos spans para poder aplicar estilos más finos
+        const titleSpan = document.createElement("span");
+        titleSpan.className = "accordion-title";
+        titleSpan.textContent = prov;
+
+        const metaSpan = document.createElement("span");
+        metaSpan.className = "pill";
+        metaSpan.textContent =
+          `${numIes} IES · ${formatNumber(totalProgProv)} programas`;
+
+        header.appendChild(titleSpan);
+        header.appendChild(metaSpan);
+        item.appendChild(header);
+
+        const content = document.createElement("div");
+        content.className = "accordion-content";
+
+        // Ordenar IES alfabéticamente dentro de la provincia
+        const iesEntries = Object.entries(iesData).sort(
+          (a, b) => a[0].localeCompare(b[0], "es")
+        );
+
+        iesEntries.forEach(([iesNombre, infoIes]) => {
+          const inner = document.createElement("div");
+          inner.className = "accordion-inner";
+
+          const innerHeader = document.createElement("div");
+          innerHeader.className = "inner-header";
+          innerHeader.textContent =
+            `${iesNombre} · ${formatNumber(infoIes.totalProgramas)} programas`;
+
+          const innerContent = document.createElement("div");
+          innerContent.className = "inner-content";
+
+          let table = `
+            <table class="inner-table">
+              <thead>
+                <tr>
+                  <th>Tipo de programa</th>
+                  <th>N° Programas</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+          infoIes.tipos.forEach(t => {
+            table += `<tr>
+                        <td>${t.tipo}</td>
+                        <td>${formatNumber(t.num)}</td>
+                      </tr>`;
+          });
+          table += "</tbody></table>";
+          innerContent.innerHTML = table;
+
+          innerHeader.addEventListener("click", () => {
+            innerContent.classList.toggle("active");
+            innerHeader.classList.toggle("open");
+          });
+
+          inner.appendChild(innerHeader);
+          inner.appendChild(innerContent);
+          content.appendChild(inner);
+        });
+
+        header.addEventListener("click", () => {
+          // Cerrar otros paneles abiertos
+          const activeContents = container.querySelectorAll(".accordion-content.active");
+          activeContents.forEach(a => {
+            if (a !== content) a.classList.remove("active");
+          });
+          const activeHeaders = container.querySelectorAll(".accordion-header.active");
+          activeHeaders.forEach(h => {
+            if (h !== header) h.classList.remove("active");
+          });
+
+          content.classList.toggle("active");
+          header.classList.toggle("active");
+        });
+
+        item.appendChild(content);
+        container.appendChild(item);
+      });
+    })
+    .catch(err => {
+      document.getElementById("accordion-container").textContent =
+        "Error al cargar los datos.";
+      console.error(err);
+    });
+</script>
+</body>
+</html>
