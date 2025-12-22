@@ -831,6 +831,33 @@ def api_total_titulados_provincia():
     total = int(tmp["TITULADOS_TOTALES"].sum()) if (tmp is not None and not tmp.empty and "TITULADOS_TOTALES" in tmp.columns) else 0
     return jsonify({"total_titulados": total, "anio_titulacion": anio_tit})
 
+@app.route("/api/total_carreras_provincia")
+def api_total_carreras_provincia():
+    provincia = request.args.get("provincia", None)
+    tmp = df_of
+    if tmp is None or tmp.empty:
+        return jsonify({"total_carreras": 0})
+
+    if provincia:
+        prov_key = norm_search(provincia)
+        if "PROV_KEY" in tmp.columns:
+            tmp = tmp[tmp["PROV_KEY"] == prov_key]
+
+    # Si tu df_of tiene una columna de programa/carrera úsala aquí.
+    # Si no, fallback a #filas (programas listados).
+    col_programa = None
+    for c in ["PROGRAMA / CARRERA", "PROGRAMA", "CARRERA", "NOMBRE_PROGRAMA", "NOMBRE_CARRERA"]:
+        if c in tmp.columns:
+            col_programa = c
+            break
+
+    if col_programa:
+        total = int(tmp[col_programa].nunique())
+    else:
+        total = int(len(tmp))
+
+    return jsonify({"total_carreras": total})
+
 # ───────────────────────── PIPELINE ─────────────────────────
 
 @app.route("/api/actualizar_oferta", methods=["GET"])
