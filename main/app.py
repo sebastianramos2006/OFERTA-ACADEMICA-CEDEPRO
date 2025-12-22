@@ -3,6 +3,7 @@
 # ✅ Matriculados + Titulados salen de F1
 # ✅ En Render: si no existe /data/*.xlsx => descarga desde Google Drive (URL) a /tmp
 # ✅ Arregla rutas de templates/static cuando app.py está dentro de /main
+# ✅ FIX: normalización de provincias + mapping códigos (SE/SD/etc) + _GUAYAS/El Oro/EL ORO
 
 import os
 import re
@@ -128,6 +129,53 @@ def find_column(columns, candidates):
             return norm_map[k]
     return None
 
+# =========================
+# FIX PROVINCIAS (códigos + limpieza)
+# =========================
+
+# Códigos típicos (y/o abreviaturas) -> provincia
+PROV_CODE_MAP = {
+    "SE": "SANTA ELENA",
+    "SD": "SANTO DOMINGO DE LOS TSÁCHILAS",
+    "ST": "SANTO DOMINGO DE LOS TSÁCHILAS",
+    "GPS": "GALÁPAGOS",
+    "GA": "GALÁPAGOS",
+}
+
+# Casos de normalización/alias por texto
+PROV_TEXT_MAP = {
+    "GALAPAGOS": "GALÁPAGOS",
+    "SANTO DOMINGO": "SANTO DOMINGO DE LOS TSÁCHILAS",
+    "SANTO DOMINGO DE LOS TSACHILAS": "SANTO DOMINGO DE LOS TSÁCHILAS",
+}
+
+def normalize_prov_token(v: str) -> str:
+    """
+    Convierte:
+      - '_GUAYAS' -> 'GUAYAS'
+      - 'se' -> 'SANTA ELENA'
+      - 'sd' -> 'SANTO DOMINGO DE LOS TSÁCHILAS'
+      - 'El Oro'/'EL ORO' -> 'EL ORO' (display luego lo puedes capitalizar si quieres)
+    """
+    s = clean_str(v)
+    s = s.replace("_", " ").strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s:
+        return ""
+
+    s_norm = norm_search(s)  # sin acentos, upper
+    # Si viene como código exacto
+    if s_norm in PROV_CODE_MAP:
+        return PROV_CODE_MAP[s_norm]
+
+    # Si viene como texto pero con alias
+    if s_norm in PROV_TEXT_MAP:
+        return PROV_TEXT_MAP[s_norm]
+
+    # Caso general: deja el texto tal cual (pero “limpio”)
+    # (Display: mantenemos mayúsculas para uniformidad)
+    return s_norm
+
 def normalize_campo_p(v: str) -> str:
     v = clean_str(v)
     v = v.replace(" - ", " ")
@@ -135,11 +183,18 @@ def normalize_campo_p(v: str) -> str:
     return v
 
 def split_campo_p(v: str):
+    """
+    Parte CAMPO_DETALLADO_P tipo:
+      'ADMINISTRACION_GUAYAS' o 'ADMINISTRACION_SE'
+    y devuelve (base, provincia_normalizada).
+    """
     s = normalize_campo_p(v)
     if "_" in s:
         parts = [p.strip() for p in s.split("_", 1)]
         if len(parts) == 2:
-            return parts[0], parts[1]
+            base = parts[0]
+            prov = normalize_prov_token(parts[1])
+            return base, prov
     return s, ""
 
 def ensure_dir(path):
@@ -235,8 +290,6 @@ COL_TIT_P = None
 COL_TIT_ANIO = None
 COL_TIT_TOTAL = None
 
-PROV_MAP = {"GALAPAGOS": "GALÁPAGOS"}
-
 candidates_map = {
     "provincia_of": ["PROVINCIA", "Provincia"],
     "campo_of": ["CAMPO DETALLADO", "CAMPO_DETALLADO", "CAMPO_DETALLADO_P", "CAMPO DETALLADO P"],
@@ -297,10 +350,7 @@ def load_base():
         df_of_local = df_of_raw_local.copy()
 
         if COL_PROV_OF and COL_PROV_OF in df_of_local.columns:
-            df_of_local["PROV_DISPLAY"] = df_of_local[COL_PROV_OF].fillna("").map(clean_str)
-            df_of_local["PROV_DISPLAY"] = df_of_local["PROV_DISPLAY"].map(
-                lambda p: PROV_MAP.get(norm_search(p), p)
-            )
+            df_of_local["PROV_DISPLAY"] = df_of_local[COL_PROV_OF].fillna("").map(clean_str).map(normalize_prov_token)
         else:
             df_of_local["PROV_DISPLAY"] = ""
 
@@ -350,8 +400,9 @@ def load_base():
         if has_underscore.any():
             campo_p_final = campo_src
         else:
+            # Si el campo NO trae provincia pegada, la armamos con provincia del dataframe
             prov_src = df_mat_local[COL_MAT_PROV].fillna("").map(clean_str) if (COL_MAT_PROV and COL_MAT_PROV in df_mat_local.columns) else pd.Series([""] * len(df_mat_local))
-            prov_src = prov_src.map(lambda p: PROV_MAP.get(norm_search(p), p))
+            prov_src = prov_src.map(normalize_prov_token)
             campo_p_final = (campo_src + "_" + prov_src).map(normalize_campo_p)
 
         df_mat_local["CAMPO_DETALLADO_P"] = campo_p_final
@@ -441,6 +492,7 @@ def provincias_list():
     if df_mat is None or df_mat.empty:
         return []
     provs = [p for p in df_mat["PROV_DESDE_CAMPO_P"].dropna().unique().tolist() if p]
+    # ya vienen normalizadas por normalize_prov_token / split_campo_p
     return sorted(provs)
 
 def years_list():
@@ -492,7 +544,7 @@ def oferta_por_campo(provincia=None):
 
     tmp = df_of
     if provincia:
-        prov_key = norm_search(provincia)
+        prov_key = norm_search(normalize_prov_token(provincia))
         tmp = tmp[tmp["PROV_KEY"] == prov_key]
 
     if tmp.empty:
@@ -514,7 +566,7 @@ def _filtrar_mat(provincia=None, anio=None, nivel=None):
         return pd.DataFrame(columns=df_mat.columns if df_mat is not None else [])
 
     if provincia:
-        prov_norm = norm_search(provincia)
+        prov_norm = norm_search(normalize_prov_token(provincia))
         tmp = tmp[tmp["PROV_KEY"] == prov_norm]
 
     if anio and str(anio).upper() != "ALL":
@@ -585,7 +637,7 @@ def _filtrar_tit(provincia=None, anio_titulacion=None):
         return pd.DataFrame(columns=df_tit.columns if df_tit is not None else [])
 
     if provincia:
-        prov_norm = norm_search(provincia)
+        prov_norm = norm_search(normalize_prov_token(provincia))
         tmp = tmp[tmp["PROV_KEY"] == prov_norm]
 
     if anio_titulacion:
@@ -794,7 +846,7 @@ def api_total_oferta_provincia():
         return jsonify({"total_oferta": 0})
 
     if provincia:
-        prov_key = norm_search(provincia)
+        prov_key = norm_search(normalize_prov_token(provincia))
         tmp = tmp[tmp["PROV_KEY"] == prov_key]
 
     total = int(tmp["CAMPO_DETALLADO"].nunique()) if "CAMPO_DETALLADO" in tmp.columns else 0
@@ -839,12 +891,10 @@ def api_total_carreras_provincia():
         return jsonify({"total_carreras": 0})
 
     if provincia:
-        prov_key = norm_search(provincia)
+        prov_key = norm_search(normalize_prov_token(provincia))
         if "PROV_KEY" in tmp.columns:
             tmp = tmp[tmp["PROV_KEY"] == prov_key]
 
-    # Si tu df_of tiene una columna de programa/carrera úsala aquí.
-    # Si no, fallback a #filas (programas listados).
     col_programa = None
     for c in ["PROGRAMA / CARRERA", "PROGRAMA", "CARRERA", "NOMBRE_PROGRAMA", "NOMBRE_CARRERA"]:
         if c in tmp.columns:
