@@ -52,7 +52,6 @@ OFERTA_VIGENTE_PATH = ENV_OFERTA_PATH or os.path.join(DATA_DIR, DEFAULT_OFERTA_F
 F1_PATH = ENV_F1_PATH or os.path.join(DATA_DIR, DEFAULT_F1_FILENAME)
 
 # ENV URLs (Google Drive direct download)
-# Soporto varios nombres por si ya los creaste así en Render:
 ENV_OFERTA_URL = (
     os.environ.get("CEDEPRO_OFERTA_VIGENTE_URL")
     or os.environ.get("OFERTA_REMOTE_URL")
@@ -133,7 +132,6 @@ def find_column(columns, candidates):
 # FIX PROVINCIAS (códigos + limpieza)
 # =========================
 
-# Códigos típicos (y/o abreviaturas) -> provincia
 PROV_CODE_MAP = {
     "SE": "SANTA ELENA",
     "SD": "SANTO DOMINGO DE LOS TSÁCHILAS",
@@ -142,7 +140,6 @@ PROV_CODE_MAP = {
     "GA": "GALÁPAGOS",
 }
 
-# Casos de normalización/alias por texto
 PROV_TEXT_MAP = {
     "GALAPAGOS": "GALÁPAGOS",
     "SANTO DOMINGO": "SANTO DOMINGO DE LOS TSÁCHILAS",
@@ -150,30 +147,20 @@ PROV_TEXT_MAP = {
 }
 
 def normalize_prov_token(v: str) -> str:
-    """
-    Convierte:
-      - '_GUAYAS' -> 'GUAYAS'
-      - 'se' -> 'SANTA ELENA'
-      - 'sd' -> 'SANTO DOMINGO DE LOS TSÁCHILAS'
-      - 'El Oro'/'EL ORO' -> 'EL ORO' (display luego lo puedes capitalizar si quieres)
-    """
     s = clean_str(v)
     s = s.replace("_", " ").strip()
     s = re.sub(r"\s+", " ", s).strip()
     if not s:
         return ""
 
-    s_norm = norm_search(s)  # sin acentos, upper
-    # Si viene como código exacto
+    s_norm = norm_search(s)
+
     if s_norm in PROV_CODE_MAP:
         return PROV_CODE_MAP[s_norm]
 
-    # Si viene como texto pero con alias
     if s_norm in PROV_TEXT_MAP:
         return PROV_TEXT_MAP[s_norm]
 
-    # Caso general: deja el texto tal cual (pero “limpio”)
-    # (Display: mantenemos mayúsculas para uniformidad)
     return s_norm
 
 def normalize_campo_p(v: str) -> str:
@@ -183,11 +170,6 @@ def normalize_campo_p(v: str) -> str:
     return v
 
 def split_campo_p(v: str):
-    """
-    Parte CAMPO_DETALLADO_P tipo:
-      'ADMINISTRACION_GUAYAS' o 'ADMINISTRACION_SE'
-    y devuelve (base, provincia_normalizada).
-    """
     s = normalize_campo_p(v)
     if "_" in s:
         parts = [p.strip() for p in s.split("_", 1)]
@@ -201,9 +183,6 @@ def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
 def download_file(url: str, dest_path: str) -> bool:
-    """
-    Descarga un archivo (ej: Drive direct download) a dest_path.
-    """
     if not url:
         return False
     try:
@@ -223,18 +202,11 @@ def download_file(url: str, dest_path: str) -> bool:
         return False
 
 def resolve_data_path(local_path: str, url_env: str, tmp_path: str) -> str:
-    """
-    1) Si existe local_path => úsalo
-    2) Si no existe y hay URL => descarga a tmp_path y úsalo
-    3) Si no, devuelve local_path igual (para que el error sea claro en logs)
-    """
     if os.path.exists(local_path):
         return local_path
-
     if url_env:
         if download_file(url_env, tmp_path):
             return tmp_path
-
     return local_path
 
 def try_autofind_in_data_dir(preferred_path: str, fallback_keywords: list[str]) -> str:
@@ -318,11 +290,9 @@ def load_base():
 
     ensure_dir(DATA_DIR)
 
-    # 1) Si no están en repo (/data), intenta descargar (Render) desde URL
     oferta_path_resolved = resolve_data_path(OFERTA_VIGENTE_PATH, ENV_OFERTA_URL, OFERTA_TMP_PATH)
     f1_path_resolved = resolve_data_path(F1_PATH, ENV_F1_URL, F1_TMP_PATH)
 
-    # 2) Autodiscover solo dentro /data (por si sí los subiste)
     oferta_path_resolved = try_autofind_in_data_dir(
         oferta_path_resolved,
         fallback_keywords=["vigente", "f_1_vigente", "f1_vigente", "oferta"]
@@ -400,7 +370,6 @@ def load_base():
         if has_underscore.any():
             campo_p_final = campo_src
         else:
-            # Si el campo NO trae provincia pegada, la armamos con provincia del dataframe
             prov_src = df_mat_local[COL_MAT_PROV].fillna("").map(clean_str) if (COL_MAT_PROV and COL_MAT_PROV in df_mat_local.columns) else pd.Series([""] * len(df_mat_local))
             prov_src = prov_src.map(normalize_prov_token)
             campo_p_final = (campo_src + "_" + prov_src).map(normalize_campo_p)
@@ -492,7 +461,6 @@ def provincias_list():
     if df_mat is None or df_mat.empty:
         return []
     provs = [p for p in df_mat["PROV_DESDE_CAMPO_P"].dropna().unique().tolist() if p]
-    # ya vienen normalizadas por normalize_prov_token / split_campo_p
     return sorted(provs)
 
 def years_list():
@@ -849,7 +817,8 @@ def api_total_oferta_provincia():
         prov_key = norm_search(normalize_prov_token(provincia))
         tmp = tmp[tmp["PROV_KEY"] == prov_key]
 
-    total = int(tmp["CAMPO_DETALLADO"].nunique()) if "CAMPO_DETALLADO" in tmp.columns else 0
+    # Total oferta = total de programas (filas) en oferta vigente (filtradas por provincia)
+    total = int(len(tmp))
     return jsonify({"total_oferta": total})
 
 @app.route("/api/total_matriculados_provincia")
