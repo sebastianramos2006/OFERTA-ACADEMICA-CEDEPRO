@@ -1,11 +1,8 @@
 # app.py — CEDEPRO Matriculados + Titulados (compatible con tu matriculas.js)
-# ✅ Mantiene EXACTAMENTE las rutas que tu JS ya llama
-# ✅ Oferta SIEMPRE sale de OFERTA VIGENTE (no de F1)
-# ✅ Matriculados salen de F1 (TOTAL_MATRICULADOS)
-# ✅ Titulados salen de F1 (TITULADOS_TOTALES)
-# ✅ Cohorte: si seleccionas anio=2020 => titulados del anio_titulacion=2024 (cohorte+4)
-# ✅ Merge por CAMPO_KEY (sin tildes) para NO perder oferta aunque matriculados/titulados sean 0
-# ✅ Arregla tus errores: paths Windows con \U, os.path.joi, FileNotFoundError por rutas rígidas
+# ✅ Oferta SIEMPRE sale de OFERTA VIGENTE
+# ✅ Matriculados + Titulados salen de F1
+# ✅ En Render: si no existe /data/*.xlsx => descarga desde Google Drive (URL) a /tmp
+# ✅ Arregla rutas de templates/static cuando app.py está dentro de /main
 
 import os
 import re
@@ -15,6 +12,7 @@ import unicodedata
 import logging
 import subprocess
 from datetime import datetime
+from urllib.request import urlopen, Request
 
 import pandas as pd
 from flask import (
@@ -29,28 +27,49 @@ from flask import (
 # ───────────────────────────── Config ─────────────────────────────
 
 logging.basicConfig(level=logging.INFO)
-app = Flask(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))              # .../main
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))           # repo root
 
-# Puedes sobreescribir por variables de entorno si quieres (Render / local)
-# Ej:
-#   set CEDEPRO_OFERTA_VIGENTE_PATH="C:\...\OFERTA_ACAD_CEDEPRO_F_1_VIGENTE.xlsx"
-#   set CEDEPRO_F1_PATH="C:\...\OFERTA_ACAD_CEDEPRO_F_1_MATRICULADOS.xlsx"
-ENV_OFERTA = os.environ.get("CEDEPRO_OFERTA_VIGENTE_PATH")
-ENV_F1 = os.environ.get("CEDEPRO_F1_PATH")
+TEMPLATES_DIR = os.path.join(ROOT_DIR, "templates")
+STATIC_DIR = os.path.join(ROOT_DIR, "static")
 
-# Nombres típicos (tu proyecto los usa así)
+app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
+
+# Data local dentro del repo (solo existe si lo subes al repo)
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+
+# Archivos esperados
 DEFAULT_OFERTA_FILENAME = "OFERTA_ACAD_CEDEPRO_F_1_VIGENTE.xlsx"
 DEFAULT_F1_FILENAME = "OFERTA_ACAD_CEDEPRO_F_1_MATRICULADOS.xlsx"
 
-# Rutas finales (robustas: si no hay env, usa /data/...)
-OFERTA_VIGENTE_PATH = ENV_OFERTA or os.path.join(DATA_DIR, DEFAULT_OFERTA_FILENAME)
-F1_PATH = ENV_F1 or os.path.join(DATA_DIR, DEFAULT_F1_FILENAME)
+# ENV paths (local/Render). Si no, usa /data/...
+ENV_OFERTA_PATH = os.environ.get("CEDEPRO_OFERTA_VIGENTE_PATH")
+ENV_F1_PATH = os.environ.get("CEDEPRO_F1_PATH")
 
-# Pipeline (si lo usas)
-PIPELINE_SCRIPT = os.path.join(BASE_DIR, "pipeline_update.py")  # ajusta si se llama distinto
+OFERTA_VIGENTE_PATH = ENV_OFERTA_PATH or os.path.join(DATA_DIR, DEFAULT_OFERTA_FILENAME)
+F1_PATH = ENV_F1_PATH or os.path.join(DATA_DIR, DEFAULT_F1_FILENAME)
+
+# ENV URLs (Google Drive direct download)
+# Soporto varios nombres por si ya los creaste así en Render:
+ENV_OFERTA_URL = (
+    os.environ.get("CEDEPRO_OFERTA_VIGENTE_URL")
+    or os.environ.get("OFERTA_REMOTE_URL")
+    or os.environ.get("OFERTA_URL")
+)
+ENV_F1_URL = (
+    os.environ.get("CEDEPRO_F1_URL")
+    or os.environ.get("F1_REMOTE_URL")
+    or os.environ.get("F1_URL")
+)
+
+# Donde guardamos descargas en Render (disco temporal)
+TMP_DIR = os.environ.get("TMPDIR", "/tmp")
+OFERTA_TMP_PATH = os.path.join(TMP_DIR, DEFAULT_OFERTA_FILENAME)
+F1_TMP_PATH = os.path.join(TMP_DIR, DEFAULT_F1_FILENAME)
+
+# Pipeline (solo local; en Render normalmente NO conviene correr Selenium aquí)
+PIPELINE_SCRIPT = os.path.join(BASE_DIR, "pipeline_update.py")
 
 # ───────────────────────────── Utils ─────────────────────────────
 
@@ -69,7 +88,6 @@ def strip_accents(s: str) -> str:
     )
 
 def norm_search(s: str) -> str:
-    # clave de comparación (sin tildes, mayúsculas, sin dobles espacios)
     s = strip_accents(s).upper()
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -100,11 +118,9 @@ def parse_year(x):
 
 def find_column(columns, candidates):
     cols = list(columns)
-    # match exact
     for c in candidates:
         if c in cols:
             return c
-    # match normalized
     norm_map = {norm_search(c): c for c in cols}
     for cand in candidates:
         k = norm_search(cand)
@@ -113,19 +129,12 @@ def find_column(columns, candidates):
     return None
 
 def normalize_campo_p(v: str) -> str:
-    # Mantiene tildes en display (no toca letras), pero arregla espacios y separador "_"
     v = clean_str(v)
     v = v.replace(" - ", " ")
     v = re.sub(r"\s+", " ", v).strip()
     return v
 
 def split_campo_p(v: str):
-    """
-    Entrada:
-      - "TURISMO Y HOTELERÍA_PICHINCHA"
-      - "TURISMO Y HOTELERÍA _ PICHINCHA"
-    Retorna: (campo_base, provincia_display)
-    """
     s = normalize_campo_p(v)
     if "_" in s:
         parts = [p.strip() for p in s.split("_", 1)]
@@ -136,11 +145,44 @@ def split_campo_p(v: str):
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
+def download_file(url: str, dest_path: str) -> bool:
+    """
+    Descarga un archivo (ej: Drive direct download) a dest_path.
+    """
+    if not url:
+        return False
+    try:
+        ensure_dir(os.path.dirname(dest_path))
+        logging.info("⬇️ Descargando: %s -> %s", url, dest_path)
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(req, timeout=60) as r:
+            content = r.read()
+        with open(dest_path, "wb") as f:
+            f.write(content)
+
+        ok = os.path.exists(dest_path) and os.path.getsize(dest_path) > 0
+        logging.info("✅ Descarga OK (%s bytes)", os.path.getsize(dest_path) if ok else 0)
+        return ok
+    except Exception as e:
+        logging.error("❌ Error descargando %s: %s", url, str(e))
+        return False
+
+def resolve_data_path(local_path: str, url_env: str, tmp_path: str) -> str:
+    """
+    1) Si existe local_path => úsalo
+    2) Si no existe y hay URL => descarga a tmp_path y úsalo
+    3) Si no, devuelve local_path igual (para que el error sea claro en logs)
+    """
+    if os.path.exists(local_path):
+        return local_path
+
+    if url_env:
+        if download_file(url_env, tmp_path):
+            return tmp_path
+
+    return local_path
+
 def try_autofind_in_data_dir(preferred_path: str, fallback_keywords: list[str]) -> str:
-    """
-    Si el archivo preferido no existe, intenta encontrar uno dentro de /data
-    por keywords (por si el nombre cambió: VIGENTE, MATRICULADOS, etc.)
-    """
     if os.path.exists(preferred_path):
         return preferred_path
 
@@ -151,24 +193,20 @@ def try_autofind_in_data_dir(preferred_path: str, fallback_keywords: list[str]) 
     if not files:
         return preferred_path
 
-    # primero: intenta match exact por nombre por defecto
     pref_name = os.path.basename(preferred_path).lower()
     for f in files:
         if f.lower() == pref_name:
             return os.path.join(DATA_DIR, f)
 
-    # luego: busca por keywords
     best = None
     best_score = -1
     for f in files:
         name = f.lower()
-        score = 0
-        for kw in fallback_keywords:
-            if kw.lower() in name:
-                score += 1
+        score = sum(1 for kw in fallback_keywords if kw.lower() in name)
         if score > best_score:
             best_score = score
             best = f
+
     if best and best_score > 0:
         return os.path.join(DATA_DIR, best)
 
@@ -176,50 +214,41 @@ def try_autofind_in_data_dir(preferred_path: str, fallback_keywords: list[str]) 
 
 # ───────────────────────────── Globals ─────────────────────────────
 
-df_of_raw = None   # oferta vigente raw
-df_of = None       # oferta vigente normalizada (con keys)
-df_mat_raw = None  # F1 raw
-df_mat = None      # matriculados normalizada
-df_tit = None      # titulados normalizada
+df_of_raw = None
+df_of = None
+df_mat_raw = None
+df_mat = None
+df_tit = None
 
-# Columnas detectadas OFERTA
 COL_PROV_OF = None
 COL_CAMPO_OF = None
 COL_IES_OF = None
 COL_TIPO_PROG_OF = None
 
-# Columnas detectadas MATRICULADOS (F1)
 COL_MAT_ANIO = None
 COL_MAT_NIVEL = None
 COL_MAT_CAMPO_P = None
 COL_MAT_PROV = None
 COL_MAT_MAT = None
 
-# Columnas detectadas TITULADOS (F1)
 COL_TIT_P = None
 COL_TIT_ANIO = None
 COL_TIT_TOTAL = None
 
-# Provincias (normalizadas -> display oficial)
-PROV_MAP = {
-    "GALAPAGOS": "GALÁPAGOS",
-}
+PROV_MAP = {"GALAPAGOS": "GALÁPAGOS"}
 
 candidates_map = {
-    # OFERTA VIGENTE
     "provincia_of": ["PROVINCIA", "Provincia"],
     "campo_of": ["CAMPO DETALLADO", "CAMPO_DETALLADO", "CAMPO_DETALLADO_P", "CAMPO DETALLADO P"],
     "ies_of": ["Universidad", "INSTITUCIÓN DE EDUCACIÓN SUPERIOR", "INSTITUCION DE EDUCACION SUPERIOR", "IES"],
     "tipo_prog_of": ["TIPO DE PROGRAMA", "TIPO_PROGRAMA", "TIPO PROGRAMA", "NIVEL"],
 
-    # MATRICULADOS (F1)
     "anio_mat": ["AÑO DE MATRICULACIÓN", "AÑO_MATRICULACIÓN", "AÑO", "ANIO", "AÑO DE MATRICULACION", "ANIO DE MATRICULACION"],
     "nivel_mat": ["TIPO DE PROGRAMA", "NIVEL_FORMACION", "NIVEL FORMACION", "NIVEL DE FORMACIÓN", "NIVEL DE FORMACION"],
     "campo_p": ["CAMPO_DETALLADO_P", "CAMPO DETALLADO P", "CAMPO DETALLADO", "CAMPO_DETALLADO"],
     "prov_mat": ["PROVINCIA", "Provincia"],
     "matriculados": ["TOTAL_MATRICULADOS", "MATRICULADOS", "TOTAL DE MATRICULADOS", "TOTAL MATRICULADOS"],
 
-    # TITULADOS (F1)
     "titulados_p": ["TITULADOS_P", "TITULADOS P"],
     "anio_titulados": ["AÑO_DE_TITULADOS", "ANIO_DE_TITULADOS", "AÑO TITULADOS", "ANIO TITULADOS"],
     "titulados_totales": ["TITULADOS_TOTALES", "TOTAL_TITULADOS", "TOTAL DE TITULADOS", "TITULADOS TOTALES"],
@@ -228,12 +257,6 @@ candidates_map = {
 # ───────────────────────────── Loaders ─────────────────────────────
 
 def load_base():
-    """
-    Carga:
-      - OFERTA VIGENTE desde OFERTA_VIGENTE_PATH
-      - MATRICULADOS + TITULADOS desde F1_PATH
-    OJO: No revienta tu servidor si falta algo; deja DF vacíos y loggea.
-    """
     global df_of_raw, df_of, df_mat_raw, df_mat, df_tit
     global COL_PROV_OF, COL_CAMPO_OF, COL_IES_OF, COL_TIPO_PROG_OF
     global COL_MAT_ANIO, COL_MAT_NIVEL, COL_MAT_CAMPO_P, COL_MAT_PROV, COL_MAT_MAT
@@ -242,15 +265,22 @@ def load_base():
 
     ensure_dir(DATA_DIR)
 
-    # re-intenta autodescubrimiento si el nombre cambió
-    OFERTA_VIGENTE_PATH = try_autofind_in_data_dir(
-        OFERTA_VIGENTE_PATH,
+    # 1) Si no están en repo (/data), intenta descargar (Render) desde URL
+    oferta_path_resolved = resolve_data_path(OFERTA_VIGENTE_PATH, ENV_OFERTA_URL, OFERTA_TMP_PATH)
+    f1_path_resolved = resolve_data_path(F1_PATH, ENV_F1_URL, F1_TMP_PATH)
+
+    # 2) Autodiscover solo dentro /data (por si sí los subiste)
+    oferta_path_resolved = try_autofind_in_data_dir(
+        oferta_path_resolved,
         fallback_keywords=["vigente", "f_1_vigente", "f1_vigente", "oferta"]
     )
-    F1_PATH = try_autofind_in_data_dir(
-        F1_PATH,
+    f1_path_resolved = try_autofind_in_data_dir(
+        f1_path_resolved,
         fallback_keywords=["matriculados", "f_1_matriculados", "f1_matriculados", "f1"]
     )
+
+    OFERTA_VIGENTE_PATH = oferta_path_resolved
+    F1_PATH = f1_path_resolved
 
     # ── OFERTA VIGENTE ──────────────────────────────
     try:
@@ -266,7 +296,6 @@ def load_base():
 
         df_of_local = df_of_raw_local.copy()
 
-        # Provincia (display)
         if COL_PROV_OF and COL_PROV_OF in df_of_local.columns:
             df_of_local["PROV_DISPLAY"] = df_of_local[COL_PROV_OF].fillna("").map(clean_str)
             df_of_local["PROV_DISPLAY"] = df_of_local["PROV_DISPLAY"].map(
@@ -275,7 +304,6 @@ def load_base():
         else:
             df_of_local["PROV_DISPLAY"] = ""
 
-        # Campo detallado (display)
         if COL_CAMPO_OF and COL_CAMPO_OF in df_of_local.columns:
             df_of_local["CAMPO_DETALLADO"] = df_of_local[COL_CAMPO_OF].fillna("").map(clean_str)
         else:
@@ -300,7 +328,6 @@ def load_base():
 
         df_mat_raw_local = pd.read_excel(F1_PATH)
 
-        # detecta columnas matriculados
         COL_MAT_ANIO = find_column(df_mat_raw_local.columns, candidates_map["anio_mat"])
         COL_MAT_NIVEL = find_column(df_mat_raw_local.columns, candidates_map["nivel_mat"])
         COL_MAT_CAMPO_P = find_column(df_mat_raw_local.columns, candidates_map["campo_p"])
@@ -316,26 +343,19 @@ def load_base():
             df_mat_local[COL_MAT_NIVEL].fillna("").map(clean_str) if COL_MAT_NIVEL else ""
         )
 
-        # CAMPO_DETALLADO_P:
-        #  - si ya viene con "_" (campo_provincia), NO inventamos nada
-        #  - si NO viene con "_", entonces recién armamos: campo + "_" + provincia
         campo_src = df_mat_local[COL_MAT_CAMPO_P].fillna("").map(clean_str) if COL_MAT_CAMPO_P else pd.Series([""] * len(df_mat_local))
         campo_src = campo_src.map(normalize_campo_p)
-
         has_underscore = campo_src.astype(str).str.contains("_", regex=False)
 
         if has_underscore.any():
-            # usa tal cual (porque tú dijiste: provincia viene desde CAMPO_DETALLADO_P)
             campo_p_final = campo_src
         else:
-            # fallback: arma con provincia si existiera
             prov_src = df_mat_local[COL_MAT_PROV].fillna("").map(clean_str) if (COL_MAT_PROV and COL_MAT_PROV in df_mat_local.columns) else pd.Series([""] * len(df_mat_local))
             prov_src = prov_src.map(lambda p: PROV_MAP.get(norm_search(p), p))
             campo_p_final = (campo_src + "_" + prov_src).map(normalize_campo_p)
 
         df_mat_local["CAMPO_DETALLADO_P"] = campo_p_final
 
-        # Derivar CAMPO_BASE_P y PROV_DESDE_CAMPO_P desde CAMPO_DETALLADO_P
         bases, provs = [], []
         for v in df_mat_local["CAMPO_DETALLADO_P"].astype(str):
             b, p = split_campo_p(v)
@@ -345,11 +365,9 @@ def load_base():
         df_mat_local["CAMPO_BASE_P"] = bases
         df_mat_local["PROV_DESDE_CAMPO_P"] = provs
 
-        # Keys comparación (sin tildes)
         df_mat_local["PROV_KEY"] = df_mat_local["PROV_DESDE_CAMPO_P"].map(norm_search)
         df_mat_local["CAMPO_KEY"] = df_mat_local["CAMPO_BASE_P"].map(norm_search)
 
-        # Matriculados num
         if COL_MAT_MAT and COL_MAT_MAT in df_mat_local.columns:
             df_mat_local[COL_MAT_MAT] = df_mat_local[COL_MAT_MAT].map(to_int_safe)
         else:
@@ -397,9 +415,7 @@ def load_base():
             df_tit_local["PROV_KEY"] = df_tit_local["PROV_T"].map(norm_search)
             df_tit_local["CAMPO_KEY"] = df_tit_local["CAMPO_BASE_T"].map(norm_search)
 
-            df_tit_local = df_tit_local[
-                df_tit_local["CAMPO_KEY"].astype(str).str.len() > 0
-            ].copy()
+            df_tit_local = df_tit_local[df_tit_local["CAMPO_KEY"].astype(str).str.len() > 0].copy()
 
             df_tit = df_tit_local
             logging.info("✅ Titulados cargados: %s filas", len(df_tit))
@@ -408,7 +424,7 @@ def load_base():
                 "TITULADOS_P", "ANIO_TITULADOS", "TITULADOS_TOTALES",
                 "PROV_KEY", "CAMPO_KEY", "CAMPO_BASE_T"
             ])
-            logging.warning("⚠️ No se detectaron columnas completas de TITULADOS (TITULADOS_P / AÑO_DE_TITULADOS / TITULADOS_TOTALES).")
+            logging.warning("⚠️ No se detectaron columnas completas de TITULADOS.")
     except Exception as e:
         logging.warning("⚠️ Titulados no disponible: %s", str(e))
         df_tit = pd.DataFrame(columns=[
@@ -416,13 +432,12 @@ def load_base():
             "PROV_KEY", "CAMPO_KEY", "CAMPO_BASE_T"
         ])
 
-# carga inicial (sin reventar)
+# Carga inicial
 load_base()
 
 # ──────────────────────── LISTAS FILTROS ────────────────────────
 
 def provincias_list():
-    # Provincias desde matriculados (mapa histórico)
     if df_mat is None or df_mat.empty:
         return []
     provs = [p for p in df_mat["PROV_DESDE_CAMPO_P"].dropna().unique().tolist() if p]
@@ -472,10 +487,6 @@ def oferta_tipo_programa_table():
     return g
 
 def oferta_por_campo(provincia=None):
-    """
-    Cuenta oferta vigente por CAMPO_DETALLADO (display), filtrando por provincia (si aplica).
-    Devuelve: CAMPO_DETALLADO, NUM_PROGRAMAS
-    """
     if df_of is None or df_of.empty:
         return pd.DataFrame(columns=["CAMPO_DETALLADO", "NUM_PROGRAMAS"])
 
@@ -587,11 +598,6 @@ def _filtrar_tit(provincia=None, anio_titulacion=None):
     return tmp
 
 def titulados_por_cohorte(provincia=None, anio_cohorte=None):
-    """
-    cohorte -> año titulación = cohorte + 4
-    Ej: 2020 -> 2024, 2021 -> 2025
-    Devuelve df: CAMPO_KEY, TOTAL_TITULADOS
-    """
     if not anio_cohorte or str(anio_cohorte).upper() == "ALL":
         return pd.DataFrame(columns=["CAMPO_KEY", "TOTAL_TITULADOS"])
 
@@ -615,16 +621,6 @@ def titulados_por_cohorte(provincia=None, anio_cohorte=None):
 # ─────────────────────── COMPARACIÓN ───────────────────────
 
 def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
-    """
-    Devuelve lista merged:
-      campo: display bonito del campo (preferimos oferta vigente)
-      oferta: #programas (vigente)
-      matriculados: total matriculados (si anio/nivel)
-      titulados: total titulados (si anio específico -> cohorte+4)
-      anio_titulacion: (si aplica)
-    """
-
-    # 1) Oferta (vigente) — SIEMPRE
     oferta_df = oferta_por_campo(provincia)
     if oferta_df.empty:
         oferta_df = pd.DataFrame(columns=["CAMPO_DETALLADO", "NUM_PROGRAMAS"])
@@ -634,7 +630,6 @@ def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
     of_map = oferta_df.set_index("CAMPO_KEY")["NUM_PROGRAMAS"].to_dict() if not oferta_df.empty else {}
     of_disp = oferta_df.set_index("CAMPO_KEY")["CAMPO_DISPLAY"].to_dict() if not oferta_df.empty else {}
 
-    # 2) Matriculados
     if provincia:
         mats_df = matriculas_base_provincia(provincia, anio, nivel)
     else:
@@ -648,7 +643,6 @@ def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
     ma_map = mats_df.set_index("CAMPO_KEY")["TOTAL_MATRICULADOS"].to_dict() if not mats_df.empty else {}
     ma_disp = mats_df.set_index("CAMPO_KEY")["CAMPO_DISPLAY"].to_dict() if not mats_df.empty else {}
 
-    # 3) Titulados (solo si hay año cohorte específico)
     ti_map = {}
     anio_titulacion = None
     if anio and str(anio).upper() != "ALL":
@@ -662,7 +656,6 @@ def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
             ti_map = {}
             anio_titulacion = None
 
-    # 4) Union keys: Oferta ∪ Matriculados ∪ Titulados
     keys = sorted(set(of_map.keys()).union(set(ma_map.keys())).union(set(ti_map.keys())))
 
     merged = []
@@ -680,9 +673,6 @@ def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
 
         merged.append(row)
 
-    # 5) Orden:
-    #   - Si hay año específico: queremos ver oferta completa => ordenamos por oferta
-    #   - Si es histórico (ALL): orden útil por matriculados
     if anio and str(anio).upper() != "ALL":
         return sorted(
             merged,
@@ -798,9 +788,6 @@ def api_export_compare_csv():
 
 @app.route("/api/total_oferta_provincia")
 def api_total_oferta_provincia():
-    """
-    Total de campos ofertados (únicos) en oferta vigente.
-    """
     provincia = request.args.get("provincia", None)
     tmp = df_of
     if tmp is None or tmp.empty:
@@ -828,10 +815,6 @@ def api_total_matriculados_provincia():
 
 @app.route("/api/total_titulados_provincia")
 def api_total_titulados_provincia():
-    """
-    cohorte -> año titulación = cohorte + 4
-    Ej: cohorte 2020 => titulados 2024
-    """
     provincia = request.args.get("provincia", None)
     anio = request.args.get("anio", None)
 
@@ -848,30 +831,12 @@ def api_total_titulados_provincia():
     total = int(tmp["TITULADOS_TOTALES"].sum()) if (tmp is not None and not tmp.empty and "TITULADOS_TOTALES" in tmp.columns) else 0
     return jsonify({"total_titulados": total, "anio_titulacion": anio_tit})
 
-# ─────────────────────── CARRERAS OFERTADAS ───────────────────────
-
-def total_carreras(provincia=None):
-    # total de registros (programas) ofertados (no únicos)
-    tmp = df_of
-    if tmp is None or tmp.empty:
-        return 0
-    if provincia:
-        prov_key = norm_search(provincia)
-        tmp = tmp[tmp["PROV_KEY"] == prov_key]
-    return int(len(tmp.index))
-
-@app.route("/api/total_carreras_provincia")
-def api_total_carreras_provincia():
-    provincia = request.args.get("provincia", None)
-    return jsonify({"total_carreras": total_carreras(provincia)})
-
-# ───────────────────────── PIPELINE ACTUALIZAR OFERTA ─────────────────────────
+# ───────────────────────── PIPELINE ─────────────────────────
 
 @app.route("/api/actualizar_oferta", methods=["GET"])
 def api_actualizar_oferta():
     """
-    Ejecuta tu pipeline local (si lo tienes habilitado en tu máquina).
-    Nota: en Render no es ideal correr Selenium aquí; esto es solo para local/testing.
+    En Render NO conviene (Selenium). Úsalo local.
     """
     try:
         current_app.logger.info("Ejecutando pipeline: %s", PIPELINE_SCRIPT)
@@ -883,7 +848,6 @@ def api_actualizar_oferta():
         if res.returncode != 0:
             return jsonify({"ok": False, "stderr": res.stderr, "stdout": res.stdout}), 500
 
-        # recargar bases luego del update
         load_base()
         return jsonify({"ok": True, "stdout": res.stdout})
     except Exception as e:
@@ -892,5 +856,4 @@ def api_actualizar_oferta():
 # ───────────────────────── Main ─────────────────────────
 
 if __name__ == "__main__":
-    # debug True solo en local
     app.run(host="0.0.0.0", port=5000, debug=True)
