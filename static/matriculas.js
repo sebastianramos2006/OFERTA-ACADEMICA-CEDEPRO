@@ -1142,19 +1142,28 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // === AÑO ESPECÍFICO ===
-      ensureYearControls();
+            // === AÑO ESPECÍFICO ===
+             ensureYearControls();
 
       const merged = await fetchCompare({ provincia, anio: currentFilters.anio, nivel });
       await buildCampoYearOptions_AZ(merged);
 
-      // agregar por campo
+      // agregar por campo (ROBUSTO PARA DRIVE + F1)
       const agg = new Map();
       merged.forEach((r) => {
         const campoRaw = getCampoRaw(r);
         const k = normalizeCampo(campoRaw);
         if (!k) return;
-        if (!agg.has(k)) agg.set(k, { campo: campoRaw, oferta: 0, matriculados: 0, titulados: 0 });
+
+        if (!agg.has(k)) {
+          agg.set(k, {
+            campo: campoRaw,
+            oferta: 0,
+            matriculados: 0,
+            titulados: 0,
+          });
+        }
+
         const it = agg.get(k);
         it.oferta += getOfertaValue(r);
         it.matriculados += getMatValue(r);
@@ -1170,6 +1179,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (bm !== am) return bm - am;
         return Number(b.titulados || 0) - Number(a.titulados || 0);
       });
+
 
       // filtro por campoYear (si se selecciona uno)
       const campoYear = campoYearSelect?.value || currentFilters.campoYear || "";
