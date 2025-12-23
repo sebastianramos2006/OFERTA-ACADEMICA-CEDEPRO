@@ -2,8 +2,8 @@
 # ✅ Oferta SIEMPRE sale de OFERTA VIGENTE
 # ✅ Matriculados + Titulados salen de F1
 # ✅ En Render: si no existe /data/*.xlsx => descarga desde Google Drive (URL) a /tmp
-# ✅ Arregla rutas de templates/static cuando app.py está dentro de /main
 # ✅ FIX: normalización de provincias + mapping códigos (SE/SD/etc) + variantes tipo ELORO/_GUAYAS
+# ✅ FIX: badges (total_oferta = programas, total_carreras = carreras únicas)
 
 import os
 import re
@@ -140,13 +140,11 @@ PROV_CODE_MAP = {
     "GA": "GALÁPAGOS",
 }
 
-# OJO: estas llaves deben estar YA normalizadas (norm_search)
+# llaves normalizadas (norm_search)
 PROV_TEXT_MAP = {
     "GALAPAGOS": "GALÁPAGOS",
     "SANTO DOMINGO": "SANTO DOMINGO DE LOS TSÁCHILAS",
     "SANTO DOMINGO DE LOS TSACHILAS": "SANTO DOMINGO DE LOS TSÁCHILAS",
-
-    # Variantes típicas de data sucia:
     "ELORO": "EL ORO",
     "EL ORO": "EL ORO",
     "GUAYAS": "GUAYAS",
@@ -154,7 +152,6 @@ PROV_TEXT_MAP = {
 
 def normalize_prov_token(v: str) -> str:
     s = clean_str(v)
-    # soportar "_GUAYAS", "  guayas  ", etc
     s = s.replace("_", " ").strip()
     s = re.sub(r"\s+", " ", s).strip()
     if not s:
@@ -162,16 +159,13 @@ def normalize_prov_token(v: str) -> str:
 
     s_norm = norm_search(s)
 
-    # 1) códigos (SE/SD/GA/etc)
     if s_norm in PROV_CODE_MAP:
         return PROV_CODE_MAP[s_norm]
 
-    # 2) texto sucio (ELORO -> EL ORO)
     if s_norm in PROV_TEXT_MAP:
         return PROV_TEXT_MAP[s_norm]
 
-    # 3) default: devolvemos normalizado (sin tildes, uppercase)
-    return s_norm
+    return s_norm  # uppercase sin tildes
 
 def normalize_campo_p(v: str) -> str:
     v = clean_str(v)
@@ -261,6 +255,7 @@ COL_PROV_OF = None
 COL_CAMPO_OF = None
 COL_IES_OF = None
 COL_TIPO_PROG_OF = None
+COL_PROG_NAME = None  # para total_carreras
 
 COL_MAT_ANIO = None
 COL_MAT_NIVEL = None
@@ -278,6 +273,13 @@ candidates_map = {
     "ies_of": ["Universidad", "INSTITUCIÓN DE EDUCACIÓN SUPERIOR", "INSTITUCION DE EDUCACION SUPERIOR", "IES"],
     "tipo_prog_of": ["TIPO DE PROGRAMA", "TIPO_PROGRAMA", "TIPO PROGRAMA", "NIVEL"],
 
+    # nombre de carrera/programa (para badge carreras)
+    "prog_name": [
+        "PROGRAMA", "NOMBRE_PROGRAMA", "NOMBRE DEL PROGRAMA",
+        "CARRERA", "NOMBRE_CARRERA", "NOMBRE DE CARRERA",
+        "PROGRAMA_NOMBRE", "NOM_CARRERA", "NOM_PROGRAMA"
+    ],
+
     "anio_mat": ["AÑO DE MATRICULACIÓN", "AÑO_MATRICULACIÓN", "AÑO", "ANIO", "AÑO DE MATRICULACION", "ANIO DE MATRICULACION"],
     "nivel_mat": ["TIPO DE PROGRAMA", "NIVEL_FORMACION", "NIVEL FORMACION", "NIVEL DE FORMACIÓN", "NIVEL DE FORMACION"],
     "campo_p": ["CAMPO_DETALLADO_P", "CAMPO DETALLADO P", "CAMPO DETALLADO", "CAMPO_DETALLADO"],
@@ -293,7 +295,7 @@ candidates_map = {
 
 def load_base():
     global df_of_raw, df_of, df_mat_raw, df_mat, df_tit
-    global COL_PROV_OF, COL_CAMPO_OF, COL_IES_OF, COL_TIPO_PROG_OF
+    global COL_PROV_OF, COL_CAMPO_OF, COL_IES_OF, COL_TIPO_PROG_OF, COL_PROG_NAME
     global COL_MAT_ANIO, COL_MAT_NIVEL, COL_MAT_CAMPO_P, COL_MAT_PROV, COL_MAT_MAT
     global COL_TIT_P, COL_TIT_ANIO, COL_TIT_TOTAL
     global OFERTA_VIGENTE_PATH, F1_PATH
@@ -326,6 +328,7 @@ def load_base():
         COL_CAMPO_OF = find_column(df_of_raw_local.columns, candidates_map["campo_of"])
         COL_IES_OF = find_column(df_of_raw_local.columns, candidates_map["ies_of"])
         COL_TIPO_PROG_OF = find_column(df_of_raw_local.columns, candidates_map["tipo_prog_of"])
+        COL_PROG_NAME = find_column(df_of_raw_local.columns, candidates_map["prog_name"])
 
         df_of_local = df_of_raw_local.copy()
 
@@ -342,6 +345,12 @@ def load_base():
         df_of_local["PROV_KEY"] = df_of_local["PROV_DISPLAY"].map(norm_search)
         df_of_local["CAMPO_KEY"] = df_of_local["CAMPO_DETALLADO"].map(norm_search)
 
+        # nombre programa/carrera (para total_carreras)
+        if COL_PROG_NAME and COL_PROG_NAME in df_of_local.columns:
+            df_of_local["PROG_NAME"] = df_of_local[COL_PROG_NAME].fillna("").map(clean_str)
+        else:
+            df_of_local["PROG_NAME"] = ""
+
         df_of_raw = df_of_raw_local
         df_of = df_of_local
 
@@ -349,7 +358,7 @@ def load_base():
     except Exception as e:
         logging.error("❌ No se pudo cargar OFERTA VIGENTE: %s", str(e))
         df_of_raw = pd.DataFrame()
-        df_of = pd.DataFrame(columns=["PROV_DISPLAY", "CAMPO_DETALLADO", "PROV_KEY", "CAMPO_KEY"])
+        df_of = pd.DataFrame(columns=["PROV_DISPLAY", "CAMPO_DETALLADO", "PROV_KEY", "CAMPO_KEY", "PROG_NAME"])
 
     # ── F1 (MATRICULADOS + TITULADOS) ──────────────────────────────
     try:
@@ -651,6 +660,7 @@ def titulados_por_cohorte(provincia=None, anio_cohorte=None):
 # ─────────────────────── COMPARACIÓN ───────────────────────
 
 def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
+    # Oferta siempre vigente
     oferta_df = oferta_por_campo(provincia)
     if oferta_df.empty:
         oferta_df = pd.DataFrame(columns=["CAMPO_DETALLADO", "NUM_PROGRAMAS"])
@@ -660,6 +670,7 @@ def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
     of_map = oferta_df.set_index("CAMPO_KEY")["NUM_PROGRAMAS"].to_dict() if not oferta_df.empty else {}
     of_disp = oferta_df.set_index("CAMPO_KEY")["CAMPO_DISPLAY"].to_dict() if not oferta_df.empty else {}
 
+    # Matriculados desde F1
     if provincia:
         mats_df = matriculas_base_provincia(provincia, anio, nivel)
     else:
@@ -673,6 +684,7 @@ def compare_oferta_vs_matriculas(provincia=None, anio=None, nivel=None):
     ma_map = mats_df.set_index("CAMPO_KEY")["TOTAL_MATRICULADOS"].to_dict() if not mats_df.empty else {}
     ma_disp = mats_df.set_index("CAMPO_KEY")["CAMPO_DISPLAY"].to_dict() if not mats_df.empty else {}
 
+    # Titulados (cohorte -> cohorte+4)
     ti_map = {}
     anio_titulacion = None
     if anio and str(anio).upper() != "ALL":
@@ -827,47 +839,44 @@ def api_total_oferta_provincia():
         prov_key = norm_search(normalize_prov_token(provincia))
         tmp = tmp[tmp["PROV_KEY"] == prov_key]
 
-    # Total oferta = total de programas (filas) en oferta vigente (filtradas por provincia)
+    # ✅ total_oferta = total de PROGRAMAS (filas) en oferta vigente
     total = int(len(tmp))
     return jsonify({"total_oferta": total})
 
 @app.route("/api/total_carreras_provincia")
 def api_total_carreras_provincia():
     provincia = request.args.get("provincia", None)
-
     tmp = df_of
     if tmp is None or tmp.empty:
         return jsonify({"total_carreras": 0})
 
     if provincia:
-        prov_key = norm_search(provincia)
-        if "PROV_KEY" in tmp.columns:
-            tmp = tmp[tmp["PROV_KEY"] == prov_key]
-        elif "PROVINCIA" in tmp.columns:
-            tmp = tmp[tmp["PROVINCIA"].map(norm_search) == prov_key]
+        prov_key = norm_search(normalize_prov_token(provincia))
+        tmp = tmp[tmp["PROV_KEY"] == prov_key]
 
-    # "Carreras" = programas únicos (usa la mejor columna disponible)
-    col_prog = None
-    for c in ["PROGRAMA", "NOMBRE_CARRERA", "CARRERA", "PROGRAMA_NOMBRE", "NOM_CARRERA"]:
-        if c in tmp.columns:
-            col_prog = c
-            break
+    if tmp.empty:
+        return jsonify({"total_carreras": 0})
 
-    if col_prog is None:
-        # fallback: si no hay nombre del programa, al menos cuenta campos únicos
-        total = int(tmp["CAMPO_DETALLADO"].nunique()) if "CAMPO_DETALLADO" in tmp.columns else 0
+    # ✅ carreras = programas únicos por nombre (si existe), si no: fallback a campo+ies
+    if "PROG_NAME" in tmp.columns and tmp["PROG_NAME"].astype(str).str.strip().any():
+        total = int(tmp["PROG_NAME"].astype(str).map(norm_search).nunique())
         return jsonify({"total_carreras": total})
 
-    total = int(tmp[col_prog].astype(str).map(norm_search).nunique())
-    return jsonify({"total_carreras": total})
+    # fallback robusto: campo + ies (si existe)
+    if COL_IES_OF and COL_IES_OF in tmp.columns and "CAMPO_DETALLADO" in tmp.columns:
+        key = (
+            tmp["CAMPO_DETALLADO"].astype(str).map(norm_search)
+            + "||"
+            + tmp[COL_IES_OF].astype(str).map(norm_search)
+        )
+        total = int(key.nunique())
+        return jsonify({"total_carreras": total})
 
+    # último fallback
+    if "CAMPO_DETALLADO" in tmp.columns:
+        return jsonify({"total_carreras": int(tmp["CAMPO_DETALLADO"].astype(str).map(norm_search).nunique())})
 
-    if col_programa:
-        total = int(tmp[col_programa].nunique())
-    else:
-        total = int(len(tmp))
-
-    return jsonify({"total_carreras": total})
+    return jsonify({"total_carreras": int(len(tmp))})
 
 @app.route("/api/total_matriculados_provincia")
 def api_total_matriculados_provincia():
