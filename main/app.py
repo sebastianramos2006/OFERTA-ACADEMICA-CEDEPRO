@@ -834,20 +834,33 @@ def api_total_oferta_provincia():
 @app.route("/api/total_carreras_provincia")
 def api_total_carreras_provincia():
     provincia = request.args.get("provincia", None)
+
     tmp = df_of
     if tmp is None or tmp.empty:
         return jsonify({"total_carreras": 0})
 
     if provincia:
-        prov_key = norm_search(normalize_prov_token(provincia))
+        prov_key = norm_search(provincia)
         if "PROV_KEY" in tmp.columns:
             tmp = tmp[tmp["PROV_KEY"] == prov_key]
+        elif "PROVINCIA" in tmp.columns:
+            tmp = tmp[tmp["PROVINCIA"].map(norm_search) == prov_key]
 
-    col_programa = None
-    for c in ["PROGRAMA / CARRERA", "PROGRAMA", "CARRERA", "NOMBRE_PROGRAMA", "NOMBRE_CARRERA"]:
+    # "Carreras" = programas únicos (usa la mejor columna disponible)
+    col_prog = None
+    for c in ["PROGRAMA", "NOMBRE_CARRERA", "CARRERA", "PROGRAMA_NOMBRE", "NOM_CARRERA"]:
         if c in tmp.columns:
-            col_programa = c
+            col_prog = c
             break
+
+    if col_prog is None:
+        # fallback: si no hay nombre del programa, al menos cuenta campos únicos
+        total = int(tmp["CAMPO_DETALLADO"].nunique()) if "CAMPO_DETALLADO" in tmp.columns else 0
+        return jsonify({"total_carreras": total})
+
+    total = int(tmp[col_prog].astype(str).map(norm_search).nunique())
+    return jsonify({"total_carreras": total})
+
 
     if col_programa:
         total = int(tmp[col_programa].nunique())
