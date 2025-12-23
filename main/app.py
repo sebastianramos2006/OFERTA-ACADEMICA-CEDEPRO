@@ -931,6 +931,79 @@ def api_actualizar_oferta():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+def _find_col(df, candidates):
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
+
+@app.route("/api/oferta_programas")
+def api_oferta_programas():
+    """
+    Devuelve carreras/programas filtrados por provincia, tipo_programa e ies.
+    Útil para el 'despliegue' cuando eliges un tipo de programa.
+    """
+    prov = request.args.get("provincia", "").strip()
+    tipo = request.args.get("tipo", "").strip()
+    ies = request.args.get("ies", "").strip()
+
+    tmp = df_of
+    if tmp is None or tmp.empty:
+        return jsonify([])
+
+    # --- Detectar columnas (ajusta si en tu df_of tienen otros nombres)
+    COL_PROV = _find_col(tmp, ["PROVINCIA", "Provincia"])
+    COL_PROV_KEY = _find_col(tmp, ["PROV_KEY"])  # si ya lo tienes normalizado
+    COL_IES = _find_col(tmp, ["INSTITUCIÓN DE EDUCACIÓN SUPERIOR", "INSTITUCION DE EDUCACION SUPERIOR", "IES", "Universidad"])
+    COL_TIPO = _find_col(tmp, ["TIPO_PROGRAMA", "TIPO DE PROGRAMA", "TIPO_PROG", "TIPO_PROGRAMA_P", "TIPO DE FORMACION"])
+    COL_PROG = _find_col(tmp, ["PROGRAMA / CARRERA", "Programa / Carrera", "PROGRAMA/CARRERA", "CARRERA", "PROGRAMA"])
+    COL_CAMPO = _find_col(tmp, ["CAMPO_DETALLADO", "CAMPO DETALLADO", "CAMPO_DETALLADO_P", "CAMPO"])
+
+    # --- Filtrar provincia (usa PROV_KEY si existe; si no, filtra por texto normalizado)
+    if prov:
+        if COL_PROV_KEY and "norm_search" in globals():
+            prov_key = norm_search(prov)
+            tmp = tmp[tmp[COL_PROV_KEY] == prov_key]
+        elif COL_PROV:
+            tmp = tmp[tmp[COL_PROV].astype(str).str.strip().str.upper() == prov.strip().upper()]
+
+    # --- Filtrar tipo
+    if tipo and COL_TIPO:
+        tmp = tmp[tmp[COL_TIPO].astype(str).str.strip().str.upper() == tipo.strip().upper()]
+
+    # --- Filtrar IES
+    if ies and COL_IES:
+        tmp = tmp[tmp[COL_IES].astype(str).str.strip().str.upper() == ies.strip().upper()]
+
+    # --- Construir salida (mínima y limpia)
+    out_cols = []
+    if COL_IES: out_cols.append(COL_IES)
+    if COL_TIPO: out_cols.append(COL_TIPO)
+    if COL_PROG: out_cols.append(COL_PROG)
+    if COL_CAMPO: out_cols.append(COL_CAMPO)
+
+    if not out_cols:
+        return jsonify([])
+
+    tmp2 = tmp[out_cols].copy()
+    tmp2 = tmp2.dropna(how="all")
+    tmp2 = tmp2.drop_duplicates()
+
+    sort_cols = [c for c in [COL_IES, COL_PROG, COL_CAMPO] if c in tmp2.columns]
+    if sort_cols:
+        tmp2 = tmp2.sort_values(sort_cols)
+
+    tmp2 = tmp2.head(1500)
+
+    renamed = {}
+    if COL_IES: renamed[COL_IES] = "ies"
+    if COL_TIPO: renamed[COL_TIPO] = "tipo"
+    if COL_PROG: renamed[COL_PROG] = "programa"
+    if COL_CAMPO: renamed[COL_CAMPO] = "campo"
+    tmp2 = tmp2.rename(columns=renamed)
+
+    return jsonify(tmp2.to_dict(orient="records"))
+
 # ───────────────────────── Main ─────────────────────────
 
 if __name__ == "__main__":
