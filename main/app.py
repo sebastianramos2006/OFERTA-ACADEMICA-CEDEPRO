@@ -3,7 +3,7 @@
 # ✅ Matriculados + Titulados salen de F1
 # ✅ En Render: si no existe /data/*.xlsx => descarga desde Google Drive (URL) a /tmp
 # ✅ Arregla rutas de templates/static cuando app.py está dentro de /main
-# ✅ FIX: normalización de provincias + mapping códigos (SE/SD/etc) + _GUAYAS/El Oro/EL ORO
+# ✅ FIX: normalización de provincias + mapping códigos (SE/SD/etc) + variantes tipo ELORO/_GUAYAS
 
 import os
 import re
@@ -129,7 +129,7 @@ def find_column(columns, candidates):
     return None
 
 # =========================
-# FIX PROVINCIAS (códigos + limpieza)
+# FIX PROVINCIAS (códigos + variantes)
 # =========================
 
 PROV_CODE_MAP = {
@@ -140,14 +140,21 @@ PROV_CODE_MAP = {
     "GA": "GALÁPAGOS",
 }
 
+# OJO: estas llaves deben estar YA normalizadas (norm_search)
 PROV_TEXT_MAP = {
     "GALAPAGOS": "GALÁPAGOS",
     "SANTO DOMINGO": "SANTO DOMINGO DE LOS TSÁCHILAS",
     "SANTO DOMINGO DE LOS TSACHILAS": "SANTO DOMINGO DE LOS TSÁCHILAS",
+
+    # Variantes típicas de data sucia:
+    "ELORO": "EL ORO",
+    "EL ORO": "EL ORO",
+    "GUAYAS": "GUAYAS",
 }
 
 def normalize_prov_token(v: str) -> str:
     s = clean_str(v)
+    # soportar "_GUAYAS", "  guayas  ", etc
     s = s.replace("_", " ").strip()
     s = re.sub(r"\s+", " ", s).strip()
     if not s:
@@ -155,12 +162,15 @@ def normalize_prov_token(v: str) -> str:
 
     s_norm = norm_search(s)
 
+    # 1) códigos (SE/SD/GA/etc)
     if s_norm in PROV_CODE_MAP:
         return PROV_CODE_MAP[s_norm]
 
+    # 2) texto sucio (ELORO -> EL ORO)
     if s_norm in PROV_TEXT_MAP:
         return PROV_TEXT_MAP[s_norm]
 
+    # 3) default: devolvemos normalizado (sin tildes, uppercase)
     return s_norm
 
 def normalize_campo_p(v: str) -> str:
@@ -821,6 +831,31 @@ def api_total_oferta_provincia():
     total = int(len(tmp))
     return jsonify({"total_oferta": total})
 
+@app.route("/api/total_carreras_provincia")
+def api_total_carreras_provincia():
+    provincia = request.args.get("provincia", None)
+    tmp = df_of
+    if tmp is None or tmp.empty:
+        return jsonify({"total_carreras": 0})
+
+    if provincia:
+        prov_key = norm_search(normalize_prov_token(provincia))
+        if "PROV_KEY" in tmp.columns:
+            tmp = tmp[tmp["PROV_KEY"] == prov_key]
+
+    col_programa = None
+    for c in ["PROGRAMA / CARRERA", "PROGRAMA", "CARRERA", "NOMBRE_PROGRAMA", "NOMBRE_CARRERA"]:
+        if c in tmp.columns:
+            col_programa = c
+            break
+
+    if col_programa:
+        total = int(tmp[col_programa].nunique())
+    else:
+        total = int(len(tmp))
+
+    return jsonify({"total_carreras": total})
+
 @app.route("/api/total_matriculados_provincia")
 def api_total_matriculados_provincia():
     provincia = request.args.get("provincia", None)
@@ -851,31 +886,6 @@ def api_total_titulados_provincia():
     tmp = _filtrar_tit(provincia, anio_tit)
     total = int(tmp["TITULADOS_TOTALES"].sum()) if (tmp is not None and not tmp.empty and "TITULADOS_TOTALES" in tmp.columns) else 0
     return jsonify({"total_titulados": total, "anio_titulacion": anio_tit})
-
-@app.route("/api/total_carreras_provincia")
-def api_total_carreras_provincia():
-    provincia = request.args.get("provincia", None)
-    tmp = df_of
-    if tmp is None or tmp.empty:
-        return jsonify({"total_carreras": 0})
-
-    if provincia:
-        prov_key = norm_search(normalize_prov_token(provincia))
-        if "PROV_KEY" in tmp.columns:
-            tmp = tmp[tmp["PROV_KEY"] == prov_key]
-
-    col_programa = None
-    for c in ["PROGRAMA / CARRERA", "PROGRAMA", "CARRERA", "NOMBRE_PROGRAMA", "NOMBRE_CARRERA"]:
-        if c in tmp.columns:
-            col_programa = c
-            break
-
-    if col_programa:
-        total = int(tmp[col_programa].nunique())
-    else:
-        total = int(len(tmp))
-
-    return jsonify({"total_carreras": total})
 
 # ───────────────────────── PIPELINE ─────────────────────────
 
