@@ -1,5 +1,4 @@
 // static/matriculas.js — CEDEPRO · Matriculados (pro, UX mejorado)
-// FIX: no reventar por endpoint faltante + badge oferta vigente (programas) + "NACIONAL (Mapa)"
 "use strict";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -20,11 +19,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const linkExportCSV = document.getElementById("linkExportCSV");
   const tablaProv = document.getElementById("tabla-prov");
 
-  // badges (si existen en tu HTML)
-  const badgeOferta = document.getElementById("totalOferta");          // ahora: total programas (oferta vigente)
-  const badgeMatriculados = document.getElementById("totalMatriculados");
-  const badgeTitulados = document.getElementById("totalTitulados");
-  const badgeCarreras = document.getElementById("totalCarreras");      // lo usamos como #campos distintos (fallback)
+  // Badges existentes (si tu HTML los tiene)
+  let badgeOferta = document.getElementById("totalOferta");
+  let badgeMatriculados = document.getElementById("totalMatriculados");
+  let badgeTitulados = document.getElementById("totalTitulados");
+  let badgeCarreras = document.getElementById("totalCarreras");
 
   // Mapa
   const svgMapa = document.getElementById("mapa-ecuador");
@@ -43,10 +42,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const ENDPOINT_PROVINCIAS = "/api/provincias_list";
   const ENDPOINT_YEARS = "/api/matriculas_years";
   const ENDPOINT_LEVELS = "/api/matriculas_levels";
-
-  const ENDPOINT_OFERTA_CAMPO = "/api/oferta_campo"; // EXISTE en tu app.py (oferta vigente)
-  const ENDPOINT_TOTAL_OFERTA = "/api/total_oferta_provincia"; // OJO: en tu app.py devuelve nunique(CAMPO_DETALLADO) (no programas)
-  const ENDPOINT_TOTAL_CARRERAS = "/api/total_carreras_provincia"; // PUEDE NO EXISTIR → lo tratamos como opcional
+  const ENDPOINT_TOTAL_OFERTA = "/api/total_oferta_provincia";
+  const ENDPOINT_TOTAL_CARRERAS = "/api/total_carreras_provincia";
 
   const ENDPOINT_COMPARE = "/api/compare"; // { merged: [...] }
   const ENDPOINT_EXPORT = "/api/export_compare_csv";
@@ -57,8 +54,8 @@ document.addEventListener("DOMContentLoaded", () => {
     anio: "ALL",
     nivel: "",
     viewMode: "nacional",
-    campo: "",      // histórico (ALL): campo elegido
-    campoYear: "",  // año específico: campo elegido (A-Z)
+    campo: "", // histórico (ALL): campo elegido
+    campoYear: "", // año específico: campo elegido (A-Z)
   };
 
   let mainChart = null;
@@ -91,6 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (campoSelect) campoSelect.disabled = loading || currentFilters.anio !== "ALL";
 
+    // controles año específico
     if (topNSelect) topNSelect.disabled = loading || currentFilters.anio === "ALL";
     if (campoYearSelect) campoYearSelect.disabled = loading || currentFilters.anio === "ALL";
   }
@@ -111,16 +109,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return await resp.json();
     } catch {
       return await resp.text();
-    }
-  }
-
-  // Igual que safeFetch, pero si falla devuelve fallback (y NO tumba la página)
-  async function safeFetchOptional(url, fallbackValue) {
-    try {
-      return await safeFetch(url);
-    } catch (e) {
-      console.warn("[Matriculas] safeFetchOptional fallback:", url, e?.message || e);
-      return fallbackValue;
     }
   }
 
@@ -246,22 +234,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return merged;
   }
 
-  // Oferta vigente real (programas) para badge:
-  // usa /api/oferta_campo?provincia=... y suma NUM_PROGRAMAS
-  async function fetchOfertaVigenteTotals(provincia) {
-    const qs = provincia ? `?provincia=${encodeURIComponent(provincia)}` : "";
-    const data = await safeFetchOptional(`${ENDPOINT_OFERTA_CAMPO}${qs}`, []);
-    const rows = Array.isArray(data) ? data : [];
-    const totalProgramas = rows.reduce((a, r) => a + Number(r?.NUM_PROGRAMAS || r?.num_programas || 0), 0);
-    const totalCampos = rows.reduce((set, r) => {
-      const c = (r?.CAMPO_DETALLADO ?? r?.campo_detallado ?? "").toString().trim();
-      if (c) set.add(normalizeCampo(c));
-      return set;
-    }, new Set()).size;
-
-    return { totalProgramas, totalCampos };
-  }
-
   // =====================================================
   //  UI PRO (re-armar filtros)
   // =====================================================
@@ -316,6 +288,74 @@ document.addEventListener("DOMContentLoaded", () => {
   let campoWrap = null;
   let campoYearWrap = null;
 
+  // --- Badge pack auto (si tu HTML no trae los spans)
+  let badgeHost = null;
+
+  function ensureBadgesNearCompare() {
+    if (badgeHost) return;
+    if (!proActionsRow) return;
+
+    badgeHost = document.createElement("div");
+    badgeHost.id = "mat-badge-host";
+    badgeHost.style.display = "flex";
+    badgeHost.style.gap = "10px";
+    badgeHost.style.alignItems = "center";
+    badgeHost.style.flexWrap = "wrap";
+
+    const makeBadge = (label, id) => {
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "baseline";
+      wrap.style.gap = "8px";
+      wrap.style.padding = "8px 12px";
+      wrap.style.borderRadius = "14px";
+      wrap.style.border = "1px solid rgba(31,36,48,0.12)";
+      wrap.style.background = "rgba(255,255,255,0.95)";
+
+      const lab = document.createElement("span");
+      lab.textContent = label;
+      lab.style.fontWeight = "800";
+      lab.style.fontSize = "12px";
+      lab.style.color = "rgba(31,36,48,0.75)";
+
+      const val = document.createElement("span");
+      val.id = id;
+      val.textContent = "0";
+      val.style.fontWeight = "900";
+      val.style.fontSize = "16px";
+      val.style.color = "rgba(31,36,48,0.95)";
+
+      wrap.appendChild(lab);
+      wrap.appendChild(val);
+      return { wrap, val };
+    };
+
+    // Si ya existen en HTML, los usamos; si no, los creamos
+    if (!badgeOferta) {
+      const b = makeBadge("Oferta", "totalOferta");
+      badgeOferta = b.val;
+      badgeHost.appendChild(b.wrap);
+    }
+    if (!badgeCarreras) {
+      const b = makeBadge("Carreras", "totalCarreras");
+      badgeCarreras = b.val;
+      badgeHost.appendChild(b.wrap);
+    }
+    if (!badgeMatriculados) {
+      const b = makeBadge("Matriculados", "totalMatriculados");
+      badgeMatriculados = b.val;
+      badgeHost.appendChild(b.wrap);
+    }
+    if (!badgeTitulados) {
+      const b = makeBadge("Titulados", "totalTitulados");
+      badgeTitulados = b.val;
+      badgeHost.appendChild(b.wrap);
+    }
+
+    // Insertar antes del botón comparar, para que quede “al lado”
+    proActionsRow.insertBefore(badgeHost, proActionsRow.firstChild);
+  }
+
   function buildProLayout() {
     if (proLayoutBuilt) return;
     if (!filtrosCard) return;
@@ -342,9 +382,6 @@ document.addEventListener("DOMContentLoaded", () => {
     proActionsRow.style.alignItems = "center";
     proActionsRow.style.flexWrap = "wrap";
     proActionsRow.style.justifyContent = "flex-end";
-
-    // (Opcional) si tus badges están en el HTML, no los movemos.
-    // Si NO están, igual el código abajo hace updateBadges() y ya.
 
     if (btnOpenComparisonModal) {
       btnOpenComparisonModal.style.padding = "10px 14px";
@@ -453,6 +490,9 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("resize", onResize);
     onResize();
 
+    // ✅ crear badges junto a Comparar (si no existen en HTML)
+    ensureBadgesNearCompare();
+
     proLayoutBuilt = true;
   }
 
@@ -533,6 +573,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function ensureCampoSelect() {
     buildProLayout();
 
+    // --- histórico (ALL)
     if (!campoSelect) {
       campoSelect = document.createElement("select");
       campoSelect.id = "campo-select";
@@ -540,7 +581,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!campoWrap) {
       styleAsControl(campoSelect);
-      campoWrap = makeField("Campo (Histórico)", campoSelect);
+      campoWrap = makeField("Campo (Histórico )", campoSelect);
 
       if (proControlsGrid) {
         const cell = document.createElement("div");
@@ -555,6 +596,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (isExpanded) loadResumen();
     });
 
+    // --- año específico (A–Z)
     if (!campoYearSelect) {
       campoYearSelect = document.createElement("select");
       campoYearSelect.id = "campo-year-select";
@@ -580,13 +622,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (campoWrap) campoWrap.style.display = isHistorico ? "flex" : "none";
     if (campoSelect) campoSelect.disabled = !isHistorico || isLoading;
 
+    // año específico: visible SOLO cuando anio != ALL
     const isYear = currentFilters.anio !== "ALL";
     if (campoYearWrap) campoYearWrap.style.display = isYear ? "flex" : "none";
     if (campoYearSelect) campoYearSelect.disabled = !isYear || isLoading;
   }
 
   // =====================================================
-  //  CONTROLES AÑO: TopN
+  //  CONTROLES AÑO: TopN (se mantiene)
   // =====================================================
 
   let yearControlsHost = null;
@@ -784,20 +827,22 @@ document.addEventListener("DOMContentLoaded", () => {
             backgroundColor: trendFill,
           },
           ...(Array.isArray(tits) && tits.some((x) => Number(x) > 0)
-            ? [{
-                type: "line",
-                label: `${campoLabel} · Titulados (corte)`,
-                data: tits,
-                yAxisID: "yMat",
-                cubicInterpolationMode: "monotone",
-                tension: 0.42,
-                borderWidth: 2.5,
-                borderColor: "rgba(147, 51, 234, 0.85)",
-                pointRadius: 2.8,
-                pointHoverRadius: 4.8,
-                pointBackgroundColor: "rgba(147, 51, 234, 0.85)",
-                fill: false,
-              }]
+            ? [
+                {
+                  type: "line",
+                  label: `${campoLabel} · Titulados (corte)`,
+                  data: tits,
+                  yAxisID: "yMat",
+                  cubicInterpolationMode: "monotone",
+                  tension: 0.42,
+                  borderWidth: 2.5,
+                  borderColor: "rgba(147, 51, 234, 0.85)",
+                  pointRadius: 2.8,
+                  pointHoverRadius: 4.8,
+                  pointBackgroundColor: "rgba(147, 51, 234, 0.85)",
+                  fill: false,
+                },
+              ]
             : []),
         ],
       },
@@ -837,7 +882,7 @@ document.addEventListener("DOMContentLoaded", () => {
         labels: L.map((x) => truncateLabel(x, 52)),
         datasets: [
           {
-            label: "Oferta vigente (programas)",
+            label: "Oferta actual (programas)",
             data: O,
             borderRadius: 10,
             backgroundColor: barFill,
@@ -962,11 +1007,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // =====================================================
 
   function sortAZ(arr) {
-    return arr.sort((a, b) =>
-      (a || "").toString().localeCompare((b || "").toString(), "es", { sensitivity: "base" })
-    );
+    return arr.sort((a, b) => (a || "").toString().localeCompare((b || "").toString(), "es", { sensitivity: "base" }));
   }
 
+  // Histórico: campos A–Z (consolidado desde años)
   async function buildCampoOptionsHistorico_AZ() {
     if (!campoSelect) return;
     const yAsc = yearsAsc();
@@ -977,7 +1021,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const mergedAll = await Promise.all(yAsc.map((y) => fetchCompare({ provincia, anio: String(y), nivel })));
 
-    const map = new Map();
+    const map = new Map(); // key -> display
     mergedAll.forEach((merged) => {
       merged.forEach((r) => {
         const raw = getCampoRaw(r);
@@ -1013,6 +1057,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Año específico: campos A–Z (solo del año)
   async function buildCampoYearOptions_AZ(merged) {
     if (!campoYearSelect) return;
     if (!Array.isArray(merged)) return;
@@ -1067,16 +1112,22 @@ document.addEventListener("DOMContentLoaded", () => {
       const provincia = currentFilters.provincia || "";
       const nivel = currentFilters.nivel || "";
 
-      // 1) Badge oferta vigente real (programas) + #campos distintos (fallback)
-      const ofertaTotals = await fetchOfertaVigenteTotals(provincia);
-
-      // 2) Endpoint total_oferta_provincia existe, pero OJO: en tu app.py es nunique(CAMPO_DETALLADO)
-      //    Lo dejamos como fallback de "carreras/campos" si quieres ver consistencia.
       const qsProv = provincia ? `?provincia=${encodeURIComponent(provincia)}` : "";
-      const totOfertaCampos = await safeFetchOptional(`${ENDPOINT_TOTAL_OFERTA}${qsProv}`, { total_oferta: ofertaTotals.totalCampos });
 
-      // 3) Endpoint total_carreras_provincia NO existe en tu app.py → opcional
-      const totCarr = await safeFetchOptional(`${ENDPOINT_TOTAL_CARRERAS}${qsProv}`, { total_carreras: ofertaTotals.totalCampos });
+      // ✅ robusto: si falla un badge endpoint, NO tumba todo
+      let totOferta = { total_oferta: 0 };
+      let totCarr = { total_carreras: 0 };
+
+      try {
+        totOferta = await safeFetch(`${ENDPOINT_TOTAL_OFERTA}${qsProv}`);
+      } catch (e) {
+        console.warn("[Matriculas] No se pudo cargar total_oferta:", e);
+      }
+      try {
+        totCarr = await safeFetch(`${ENDPOINT_TOTAL_CARRERAS}${qsProv}`);
+      } catch (e) {
+        console.warn("[Matriculas] No se pudo cargar total_carreras:", e);
+      }
 
       // === HISTÓRICO ===
       if (currentFilters.anio === "ALL") {
@@ -1086,12 +1137,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const yAsc = yearsAsc();
         if (!yAsc.length) throw new Error("No hay años disponibles para histórico.");
 
-        // Si no escoges campo, igual mostramos badges de oferta vigente.
         if (!campoElegido) {
           updateTabla([]);
           updateBadges({
-            oferta: ofertaTotals.totalProgramas, // programas oferta vigente
-            carreras: getTotalCarreras(totCarr) || Number(totOfertaCampos?.total_oferta || 0) || ofertaTotals.totalCampos,
+            oferta: totOferta?.total_oferta ?? 0,
+            carreras: getTotalCarreras(totCarr),
             matriculados: 0,
             titulados: 0,
           });
@@ -1148,8 +1198,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         updateBadges({
-          oferta: ofertaTotals.totalProgramas,
-          carreras: getTotalCarreras(totCarr) || Number(totOfertaCampos?.total_oferta || 0) || ofertaTotals.totalCampos,
+          oferta: totOferta?.total_oferta ?? 0,
+          carreras: getTotalCarreras(totCarr),
           matriculados: totalMatHistorico,
           titulados: totalTitHistorico,
         });
@@ -1164,16 +1214,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const merged = await fetchCompare({ provincia, anio: currentFilters.anio, nivel });
       await buildCampoYearOptions_AZ(merged);
 
+      // agregar por campo (ROBUSTO)
       const agg = new Map();
       merged.forEach((r) => {
         const campoRaw = getCampoRaw(r);
         const k = normalizeCampo(campoRaw);
         if (!k) return;
 
-        if (!agg.has(k)) {
-          agg.set(k, { campo: campoRaw, oferta: 0, matriculados: 0, titulados: 0 });
-        }
-
+        if (!agg.has(k)) agg.set(k, { campo: campoRaw, oferta: 0, matriculados: 0, titulados: 0 });
         const it = agg.get(k);
         it.oferta += getOfertaValue(r);
         it.matriculados += getMatValue(r);
@@ -1215,8 +1263,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       updateBadges({
-        oferta: ofertaTotals.totalProgramas,
-        carreras: getTotalCarreras(totCarr) || Number(totOfertaCampos?.total_oferta || 0) || ofertaTotals.totalCampos,
+        oferta: totOferta?.total_oferta ?? 0,
+        carreras: getTotalCarreras(totCarr),
         matriculados: totalMatYear,
         titulados: totalTitYear,
       });
@@ -1243,6 +1291,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const provs = await safeFetch(ENDPOINT_PROVINCIAS);
         const list = Array.isArray(provs?.provincias) ? provs.provincias : Array.isArray(provs) ? provs : [];
         provinciaSelect.innerHTML = "";
+
         const opt0 = document.createElement("option");
         opt0.value = "";
         opt0.textContent = "NACIONAL (Mapa)";
@@ -1314,6 +1363,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ensureYearControls();
       toggleYearControlsUI();
 
+      // cargar campos A–Z para histórico
       await buildCampoOptionsHistorico_AZ();
     } catch (err) {
       console.error("[Matriculas] Error initFiltros:", err);
@@ -1363,7 +1413,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     expandPanel(true);
 
-    try { (filtrosCard || chartCard || matCanvas)?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
+    try {
+      (filtrosCard || chartCard || matCanvas)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {}
 
     compareCache.clear();
     toggleCampoUI();
@@ -1495,7 +1547,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (anioSelect) {
     anioSelect.addEventListener("change", async () => {
       currentFilters.anio = anioSelect.value || "ALL";
-      currentFilters.campoYear = "";
+      currentFilters.campoYear = ""; // reset campo año
       toggleCampoUI();
       ensureYearControls();
       toggleYearControlsUI();
